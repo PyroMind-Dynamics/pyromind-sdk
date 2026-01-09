@@ -1,0 +1,23 @@
+# Hello World Node - Simple Example
+# This is a basic example node that demonstrates the unified parameters format
+
+name: HelloWorldNode
+description: "A simple hello world node that prints a greeting message"
+category: "Examples"
+display_name: "Hello World"
+base_class: PodExecutionNode
+
+command_template:
+  - "sh"
+  - "-c"
+  - "echo \"Hello, {{name}}!\" > {{output}}"
+
+parameters:
+  - name: name
+    dtype: "STRING"
+    default: "World"
+    type: "input"
+    required_type: "required"
+  - name: output
+    dtype: "STRING"
+    type: "output"

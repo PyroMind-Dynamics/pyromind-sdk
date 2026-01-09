@@ -1,0 +1,40 @@
+# Python Calculator Node - Example
+# 使用 Python 函数实现的计算器节点（多输入多输出示例）
+
+name: PythonCalculatorNode
+description: "Calculator using Python function with multiple inputs and outputs"
+category: "Examples"
+display_name: "Python Calculator"
+base_class: PodExecutionNode
+
+# Python 函数配置
+python_code: "utils/calculator.py"      # Python 文件路径（相对于 YAML 文件）
+function_name: "calculate"               # 函数名
+
+# 执行环境配置（可选）
+python_command: "python3"                # Python 执行命令（默认: python3）
+# conda_env: "myenv"                     # Conda 环境名（可选）
+# workdir: "/workspace/project"          # 工作目录（可选）
+# environment:                           # 环境变量（可选）
+#   PYTHONUNBUFFERED: "1"
+
+parameters:
+  - name: input0
+    dtype: "FLOAT"
+    default: 10.0
+    type: "input"
+    required_type: "required"
+  - name: input1
+    dtype: "FLOAT"
+    default: 5.0
+    type: "input"
+    required_type: "required"
+  - name: result_input0
+    dtype: "FLOAT"
+    type: "output"
+  - name: result_input1
+    dtype: "FLOAT"
+    type: "output"
+  - name: result_output0
+    dtype: "FLOAT"
+    type: "output"

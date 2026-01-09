@@ -1,0 +1,23 @@
+# Echo Node - Simple Example
+# A node that echoes input text
+
+name: EchoNode
+description: "Echo node that outputs the input text"
+category: "Examples"
+display_name: "Echo"
+base_class: PodExecutionNode
+
+command_template:
+  - "sh"
+  - "-c"
+  - "echo \"{{text}}\" > {{output}}"
+
+parameters:
+  - name: text
+    dtype: "STRING"
+    default: "Hello from Echo Node!"
+    type: "input"
+    required_type: "required"
+  - name: output
+    dtype: "STRING"
+    type: "output"

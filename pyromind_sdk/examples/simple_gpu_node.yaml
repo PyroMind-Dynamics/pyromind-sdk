@@ -1,0 +1,23 @@
+# Simple GPU Node - Example
+# A basic example of a GPU-enabled node
+
+name: SimpleGpuNode
+description: "Simple example of a GPU-enabled node"
+category: "Examples"
+display_name: "Simple GPU Node"
+base_class: GpuPodExecutionNode
+
+command_template:
+  - "sh"
+  - "-c"
+  - "nvidia-smi --query-gpu=name --format=csv,noheader > {{status}}"
+
+parameters:
+  - name: message
+    dtype: "STRING"
+    default: "GPU Node Example"
+    type: "input"
+    required_type: "required"
+  - name: status
+    dtype: "STRING"
+    type: "output"

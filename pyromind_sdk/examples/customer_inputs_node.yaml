@@ -1,0 +1,34 @@
+# Customer Use Node - Example
+# 演示如何在 parameters 中使用 customer_use 字段（支持输入和输出）
+
+name: CustomerUseNode
+description: "Example node demonstrating customer_use field in parameters"
+category: "Examples"
+display_name: "Customer Use Example"
+base_class: PodExecutionNode
+
+command_template:
+  - "sh"
+  - "-c"
+  - "echo 'Regular input: {{regular_input}}' && echo 'Customer input: {{customer_param}}' > {{output}}"
+
+parameters:
+  - name: regular_input
+    dtype: "STRING"
+    default: "This is a regular input"
+    type: "input"
+    required_type: "required"
+    # 这个参数不是 customer use，会在 COMMAND_TEMPLATE 中使用
+  
+  - name: customer_param
+    dtype: "STRING"
+    default: "This is a customer input"
+    type: "input"
+    required_type: "required"
+    customer_use: true  # 标记为 customer use（输入）
+  
+  - name: output
+    dtype: "STRING"
+    type: "output"
+    customer_use: true  # 标记为 customer use（输出）
+

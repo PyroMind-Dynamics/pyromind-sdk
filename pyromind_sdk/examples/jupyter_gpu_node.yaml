@@ -1,0 +1,52 @@
+# Jupyter GPU Node - Example
+# A GPU-enabled Python node that executes Python code in Jupyter environment
+
+name: JupyterGpuNode
+description: "GPU-enabled Python node that executes Python code in Jupyter environment"
+category: "Examples"
+display_name: "Jupyter GPU Node"
+base_class:
+  - GpuPodExecutionNode
+  - JupyterLabPodExecutionNode
+
+# Python 函数配置
+python_code: "utils/jupyter_gpu_executor.py"      # Python 文件路径（相对于 YAML 文件）
+function_name: "execute_jupyter_gpu_code"         # 函数名
+
+# 执行环境配置（可选）
+python_command: "python3"                         # Python 执行命令（默认: python3）
+
+parameters:
+  - name: python_code
+    dtype: "STRING"
+    default: |
+      import torch
+      if torch.cuda.is_available():
+          print(f'CUDA available: {torch.cuda.is_available()}')
+          print(f'GPU count: {torch.cuda.device_count()}')
+          print(f'GPU name: {torch.cuda.get_device_name(0)}')
+      else:
+          print('CUDA not available')
+    type: "input"
+    required_type: "required"
+  - name: message
+    dtype: "STRING"
+    default: "Jupyter GPU Node executed successfully"
+    type: "input"
+    required_type: "required"
+  - name: gpu_info
+    dtype: "STRING"
+    type: "output"
+  - name: execution_result
+    dtype: "STRING"
+    type: "output"
+  - name: execution_output
+    dtype: "STRING"
+    type: "output"
+  - name: message_output
+    dtype: "STRING"
+    type: "output"
+
+resources:
+  gpu_min_count: 1
+  gpu_max_count: 1

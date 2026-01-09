@@ -1,0 +1,40 @@
+# Multiline Text Node - Example
+# Python 节点示例：处理多行文本输入
+
+name: MultilineTextNode
+description: "Process multiline text input with Python function"
+category: "Examples"
+display_name: "Multiline Text Processor"
+base_class: PodExecutionNode
+
+# Python 函数配置
+python_code: "utils/multiline_processor.py"      # Python 文件路径（相对于 YAML 文件）
+function_name: "process_multiline_text"           # 函数名
+
+# 执行环境配置（可选）
+python_command: "python3"                        # Python 执行命令（默认: python3）
+
+parameters:
+  - name: text
+    dtype: "STRING"
+    default: |
+      "Hello, world!"
+      ''this is a line''
+      This is line 1
+      This is line 2
+      This is line 3
+    type: "input"
+    required_type: "required"
+  - name: line_count
+    dtype: "INT"
+    type: "output"
+  - name: word_count
+    dtype: "INT"
+    type: "output"
+  - name: char_count
+    dtype: "INT"
+    type: "output"
+  - name: processed_text
+    dtype: "STRING"
+    type: "output"
+

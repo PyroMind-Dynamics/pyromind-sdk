@@ -1,0 +1,45 @@
+# Multi Input Node - Example
+# A node demonstrating various input types
+
+name: MultiInputNode
+description: "Example node demonstrating various input types"
+category: "Examples"
+display_name: "Multi Input"
+base_class: PodExecutionNode
+
+command_template:
+  - "sh"
+  - "-c"
+  - "echo \"Text: {{text}}, Number: {{number}}, Choice: {{choice}}, Enabled: {{enabled}}\" > {{output}}"
+
+parameters:
+  - name: text
+    dtype: "STRING"
+    default: "Example text"
+    type: "input"
+    required_type: "required"
+  - name: number
+    dtype: "INT"
+    default: 42
+    min: 0
+    max: 100
+    type: "input"
+    required_type: "required"
+  - name: choice
+    dtype: ["option1", "option2", "option3"]
+    default: "option1"
+    type: "input"
+    required_type: "required"
+  - name: enabled
+    dtype: "BOOLEAN"
+    default: true
+    type: "input"
+    required_type: "required"
+  - name: optional_text
+    dtype: "STRING"
+    default: ""
+    type: "input"
+    required_type: "optional"
+  - name: output
+    dtype: "STRING"
+    type: "output"
