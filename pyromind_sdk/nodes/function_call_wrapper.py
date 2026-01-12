@@ -36,32 +36,36 @@ def convert_path_by_env(path: str) -> str:
     if not isinstance(path_map, dict):
         return path
     
-    from_prefix = path_map.get("from_prefix")
     to_prefix = path_map.get("to_prefix")
     pattern = path_map.get("pattern")
     
-    if not from_prefix or not to_prefix:
+    if not to_prefix or not pattern or "{uid}" not in pattern:
         return path
     
-    if pattern and "{uid}" in pattern:
-        pattern_parts = pattern.split("{uid}")
-        if len(pattern_parts) == 2:
-            pattern_prefix = pattern_parts[0]
-            pattern_suffix = pattern_parts[1]
-            if path.startswith(pattern_prefix) and pattern_suffix in path:
-                suffix_idx = path.find(pattern_suffix)
-                if suffix_idx > 0:
-                    rest_path = path[suffix_idx + len(pattern_suffix):]
-                    if to_prefix.endswith("/"):
-                        converted = to_prefix.rstrip("/") + rest_path
-                    else:
-                        converted = to_prefix + rest_path
-                    return converted
+    # Extract pattern prefix (everything before {uid})
+    pattern_prefix = pattern.split("{uid}")[0]
     
-    if path.startswith(from_prefix):
-        return path.replace(from_prefix, to_prefix, 1)
+    # Check if path matches the pattern
+    if not path.startswith(pattern_prefix):
+        return path
     
-    return path
+    # Remove pattern prefix to get remaining path
+    remaining = path[len(pattern_prefix):]
+    
+    if remaining:
+        parts = remaining.split("/", 1)
+        if len(parts) > 1:
+            rest_path = "/" + parts[1]
+        else:
+            rest_path = ""
+    else:
+        rest_path = ""
+    
+    # Build converted path
+    if to_prefix.endswith("/"):
+        return to_prefix.rstrip("/") + rest_path
+    else:
+        return to_prefix + rest_path
 
 
 def load_python_module(python_file: Path):
