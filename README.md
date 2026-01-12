@@ -90,13 +90,15 @@ category: "Custom"
 base_class: PodExecutionNode
 
 # Python function configuration
-python_code: "utils/calculator.py"      # Python file path (relative to YAML file)
+python_code: "utils/calculator.py"      # Python file path (relative to YAML file or absolute path)
 function_name: "calculate"               # Function name
 
 # Execution environment configuration (optional)
 python_command: "python3"                # Python execution command (default: python3)
-# conda_env: "myenv"                     # Conda environment name (optional)
+# conda_env: "base"                      # Conda environment name (optional, default: "base")
 # workdir: "/workspace/project"          # Working directory (optional)
+# environment:                           # Environment variables (optional)
+#   PYTHONUNBUFFERED: "1"
 
 parameters:
   - name: input0
@@ -128,6 +130,16 @@ def calculate(input0: float, input1: float) -> dict:
         "result_output0": str(output0),
     }
 ```
+
+**Note on Python file paths:**
+- Relative paths are resolved relative to the YAML file's directory
+- Absolute paths are used as-is
+- The Python file must exist and be accessible at the specified path
+
+**Note on JupyterLab environment:**
+- When using `JupyterLabPodExecutionNode`, the Python code will be executed in a JupyterLab environment
+- Conda environment activation is handled automatically (default: `base` environment)
+- The command execution uses `bash -c` with conda activation, so shell operators like `&&` are preserved
 
 ## Advanced Features
 
