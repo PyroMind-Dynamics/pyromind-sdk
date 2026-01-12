@@ -12,9 +12,13 @@ Main features:
 import sys
 import argparse
 import json
+import warnings
 from pathlib import Path
 from typing import Dict, Any, Optional
 from pprint import pprint
+
+# Enable deprecation warnings to be shown
+warnings.filterwarnings('always', category=DeprecationWarning)
 
 try:
     import pyromind_sdk

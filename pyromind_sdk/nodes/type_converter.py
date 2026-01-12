@@ -94,7 +94,13 @@ def validate_output_type(value: Any, type_spec: str) -> bool:
     elif type_spec == "BOOLEAN":
         return isinstance(value, bool)
     else:
-        # Unknown type, allow through (backward compatible)
+        # Unknown type, allow through
+        import warnings
+        warnings.warn(
+            f"Unknown type '{type_spec}' in validate_output_type, allowing through. ",
+            UserWarning,
+            stacklevel=2
+        )
         return True
 
 

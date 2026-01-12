@@ -14,7 +14,10 @@ pip install pyromind-sdk
 
 ### YAML-based Node Configuration
 
-Define nodes using YAML files:
+Define nodes using YAML files with the unified `parameters` format. All inputs and outputs are defined in the `parameters` list:
+
+- **Input parameters**: Use `type: "input"` with `required_type: "required"` or `"optional"`
+- **Output parameters**: Use `type: "output"` (outputs are automatically extracted to create `RETURN_TYPES` and `RETURN_NAMES`)
 
 ```python
 from pyromind_sdk import load_nodes_from_yaml
@@ -38,19 +41,19 @@ description: "My custom node"
 category: "Custom"
 base_class: PodExecutionNode
 
-return_types: ["STRING"]
-return_names: ["output"]
-
 command_template:
   - "echo"
   - "Hello from {{name}}!"
 
-inputs:
-  required:
-    name:
-      type: "STRING"
-      default: "World"
-  optional: {}
+parameters:
+  - name: name
+    dtype: "STRING"
+    default: "World"
+    type: "input"
+    required_type: "required"
+  - name: output
+    dtype: "STRING"
+    type: "output"
 ```
 
 ## Main Classes
@@ -85,9 +88,6 @@ name: CalculatorNode
 description: "A calculator node using Python function"
 category: "Custom"
 base_class: PodExecutionNode
-
-return_types: ["STRING", "STRING"]
-return_names: ["result_input0", "result_output0"]
 
 # Python function configuration
 python_code: "utils/calculator.py"      # Python file path (relative to YAML file)

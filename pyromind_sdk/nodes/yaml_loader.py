@@ -449,9 +449,8 @@ def create_node_class_from_yaml(yaml_config: Dict[str, Any], class_name: str, ya
     """
     Create node class from YAML configuration
     
-    Supports two formats:
-    1. New format: Uses unified parameters list
-    2. Old format: Uses inputs, return_types, return_names (backward compatible)
+    Only supports the 'parameters' format. All inputs and outputs must be defined
+    in the 'parameters' list with 'type: input' or 'type: output'.
     
     Args:
         yaml_config: YAML configuration dictionary
@@ -493,20 +492,20 @@ def create_node_class_from_yaml(yaml_config: Dict[str, Any], class_name: str, ya
             raise ValueError(f"Unknown base class: {base_class_name}")
         base_classes.append(BASE_CLASS_MAP[base_class_name])
     
-    # Parse parameters (supports both new and old formats)
-    customer_use_from_parameters = []
-    if "parameters" in yaml_config:
-        # New format: Uses unified parameters
-        parsed = parse_parameters(yaml_config["parameters"])
-        inputs_config = parsed["inputs"]
-        return_types = parsed["return_types"]
-        return_names = parsed["return_names"]
-        customer_use_from_parameters = parsed.get("customer_use", [])
-    else:
-        # Old format: Backward compatible
-        inputs_config = yaml_config.get("inputs", {"required": {}, "optional": {}})
-        return_types = yaml_config.get("return_types", [])
-        return_names = yaml_config.get("return_names", [])
+    # Parse parameters (only new format is supported)
+    if "parameters" not in yaml_config:
+        raise ValueError(
+            f"Node '{class_name}' must use the 'parameters' format. "
+            f"Missing 'parameters' field in YAML configuration. "
+            f"See README.md for the correct format."
+        )
+    
+    # New format: Uses unified parameters
+    parsed = parse_parameters(yaml_config["parameters"])
+    inputs_config = parsed["inputs"]
+    return_types = parsed["return_types"]
+    return_names = parsed["return_names"]
+    customer_use_from_parameters = parsed.get("customer_use", [])
     
     # Create class dictionary
     class_dict = {
@@ -661,7 +660,7 @@ def create_node_class_from_yaml(yaml_config: Dict[str, Any], class_name: str, ya
     class_dict["BASE_INPUT_TYPES"] = classmethod(base_input_types)
     
     # Define CUSTOMER_INPUTS method (keep method name for base class compatibility)
-    # Prioritize customer_use flag from parameters, if not available use top-level customer_inputs or customer_use (backward compatible)
+    # Prioritize customer_use flag from parameters, if not available use top-level customer_inputs or customer_use
     customer_use_list = customer_use_from_parameters if customer_use_from_parameters else yaml_config.get("customer_use", yaml_config.get("customer_inputs", []))
     if customer_use_list:
         def customer_inputs_method(cls):
