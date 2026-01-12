@@ -534,18 +534,21 @@ def execute_command_template(
                 if content:
                     result["outputs"][output_name] = content
                 else:
+                    # 输出文件为空，视为错误
                     file_size = os.path.getsize(file_path)
-                    result["warnings"].append(
-                        f"Output file exists but is empty: {file_path} (size: {file_size})"
-                    )
+                    error_msg = f"Output file exists but is empty: {file_path} (size: {file_size})"
+                    result["errors"].append(error_msg)
+                    result["success"] = False
             else:
                 if os.path.exists(file_path):
                     file_size = os.path.getsize(file_path)
-                    result["warnings"].append(
-                        f"Output file exists but could not be read: {file_path} (size: {file_size})"
-                    )
+                    error_msg = f"Output file exists but could not be read: {file_path} (size: {file_size})"
+                    result["errors"].append(error_msg)
+                    result["success"] = False
                 else:
-                    result["warnings"].append(f"Output file not found: {file_path}")
+                    error_msg = f"Output file not found: {file_path}"
+                    result["errors"].append(error_msg)
+                    result["success"] = False
             
             # 清理临时文件
             try:

@@ -163,11 +163,26 @@ def print_summary(results: Dict[str, Any], verbose: bool = False, execute: bool 
     total = len(results["nodes"])
     valid = sum(1 for n in results["nodes"] if n.get("validation", {}).get("valid", False))
     
+    # 统计执行结果
+    if execute:
+        executed = sum(1 for n in results["nodes"] if n.get("execution") is not None)
+        execution_success = 0
+        for n in results["nodes"]:
+            exec_result = n.get("execution")
+            if exec_result:
+                returncode = exec_result.get('returncode', None)
+                has_errors = exec_result.get('errors') and len(exec_result.get('errors', [])) > 0
+                if returncode == 0 and not has_errors:
+                    execution_success += 1
+    
     print(f"\n{'='*60}")
     print(f"Test Results")
     print(f"{'='*60}")
     print(f"Total nodes: {total}")
     print(f"Valid: {valid}")
+    if execute:
+        print(f"Executed: {executed}")
+        print(f"Execution Success: {execution_success}")
     print(f"{'='*60}")
     
     if not verbose:
@@ -213,13 +228,23 @@ def print_summary(results: Dict[str, Any], verbose: bool = False, execute: bool 
             # 执行结果
             if execute and execution:
                 returncode = execution.get('returncode', 'N/A')
-                status = "✓" if returncode == 0 else "✗"
+                # 检查是否有错误（包括空输出文件）
+                has_errors = execution.get('errors') and len(execution.get('errors', [])) > 0
+                execution_success = returncode == 0 and not has_errors
+                status = "✓" if execution_success else "✗"
                 print(f"    {status} Return code: {returncode}")
                 if returncode != 0 and execution.get("stderr"):
                     stderr_preview = execution["stderr"].strip()[:200]
                     if len(execution["stderr"].strip()) > 200:
                         stderr_preview += "..."
                     print(f"      Error: {stderr_preview}")
+                # 显示执行错误（包括空输出文件等）
+                if has_errors:
+                    print(f"      Execution Errors:")
+                    for error in execution.get('errors', [])[:3]:
+                        print(f"        ✗ {error}")
+                    if len(execution.get('errors', [])) > 3:
+                        print(f"        ... ({len(execution.get('errors', [])) - 3} more errors)")
 
 
 def main():
@@ -287,6 +312,21 @@ Examples:
             print(f"Error: {results.get('error', 'Unknown error')}", file=sys.stderr)
             sys.exit(1)
         print_summary(results, verbose=args.verbose, execute=args.execute)
+        
+        # 检查是否有执行错误（包括空输出文件）
+        if args.execute:
+            has_execution_errors = False
+            for node_result in results.get("nodes", []):
+                execution = node_result.get("execution")
+                if execution:
+                    returncode = execution.get('returncode', None)
+                    has_errors = execution.get('errors') and len(execution.get('errors', [])) > 0
+                    if returncode != 0 or has_errors:
+                        has_execution_errors = True
+                        break
+            
+            if has_execution_errors:
+                sys.exit(1)
 
 
 if __name__ == "__main__":

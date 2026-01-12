@@ -42,8 +42,9 @@ category: "Custom"
 base_class: PodExecutionNode
 
 command_template:
-  - "echo"
-  - "Hello from {{name}}!"
+  - "sh"
+  - "-c"
+  - "echo \"Hello, {{name}}!\" > {{output}}"
 
 parameters:
   - name: name
