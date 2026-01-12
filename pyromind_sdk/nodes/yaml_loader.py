@@ -9,7 +9,7 @@ import yaml
 import os
 import re
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple, Set
+from typing import Dict, Any, List, Optional, Tuple, Set, Callable
 
 # Import constants from common module
 try:
@@ -673,12 +673,16 @@ def create_node_class_from_yaml(yaml_config: Dict[str, Any], class_name: str, ya
     return node_class
 
 
-def load_nodes_from_yaml(yaml_path: str) -> Dict[str, type]:
+def load_nodes_from_yaml(yaml_path: str, yaml_config_modifier: Optional[Callable[[Dict[str, Any], str], Dict[str, Any]]] = None) -> Dict[str, type]:
     """
     Load nodes from YAML file
     
     Args:
         yaml_path: YAML file path
+        yaml_config_modifier: Optional function to modify YAML configuration before creating node class.
+            Takes (yaml_config, yaml_file_path) as input and returns modified yaml_config.
+            This allows the caller to customize YAML configuration, such as modifying python_code paths.
+            Example: lambda config, path: {**config, "python_code": convert_path(config.get("python_code"))}
         
     Returns:
         Dictionary mapping node names to node classes
@@ -711,6 +715,9 @@ def load_nodes_from_yaml(yaml_path: str) -> Dict[str, type]:
                 node_name = node_config.get("name")
                 if not node_name:
                     raise ValueError("Node must have a 'name' field")
+                # Apply modifier if provided
+                if yaml_config_modifier:
+                    node_config = yaml_config_modifier(node_config, yaml_path)
                 class_name = node_name.replace(" ", "").replace("-", "")
                 node_class = create_node_class_from_yaml(node_config, class_name, yaml_path)
                 nodes[node_name] = node_class
@@ -719,6 +726,9 @@ def load_nodes_from_yaml(yaml_path: str) -> Dict[str, type]:
             node_name = yaml_data.get("name")
             if not node_name:
                 raise ValueError("Node must have a 'name' field")
+            # Apply modifier if provided
+            if yaml_config_modifier:
+                yaml_data = yaml_config_modifier(yaml_data, yaml_path)
             class_name = node_name.replace(" ", "").replace("-", "")
             node_class = create_node_class_from_yaml(yaml_data, class_name, yaml_path)
             nodes[node_name] = node_class
