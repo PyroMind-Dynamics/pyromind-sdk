@@ -23,6 +23,47 @@ except ImportError:
     from pyromind_sdk.nodes.type_converter import convert_string_to_python_type, convert_inputs, validate_output_type
 
 
+def convert_path_by_env(path: str) -> str:
+    path_map_json = os.environ.get('PYTHON_NODE_PATH_PREFIX_MAP')
+    if not path_map_json:
+        return path
+    
+    try:
+        path_map = json.loads(path_map_json)
+    except (json.JSONDecodeError, TypeError):
+        return path
+    
+    if not isinstance(path_map, dict):
+        return path
+    
+    from_prefix = path_map.get("from_prefix")
+    to_prefix = path_map.get("to_prefix")
+    pattern = path_map.get("pattern")
+    
+    if not from_prefix or not to_prefix:
+        return path
+    
+    if pattern and "{uid}" in pattern:
+        pattern_parts = pattern.split("{uid}")
+        if len(pattern_parts) == 2:
+            pattern_prefix = pattern_parts[0]
+            pattern_suffix = pattern_parts[1]
+            if path.startswith(pattern_prefix) and pattern_suffix in path:
+                suffix_idx = path.find(pattern_suffix)
+                if suffix_idx > 0:
+                    rest_path = path[suffix_idx + len(pattern_suffix):]
+                    if to_prefix.endswith("/"):
+                        converted = to_prefix.rstrip("/") + rest_path
+                    else:
+                        converted = to_prefix + rest_path
+                    return converted
+    
+    if path.startswith(from_prefix):
+        return path.replace(from_prefix, to_prefix, 1)
+    
+    return path
+
+
 def load_python_module(python_file: Path):
     """
     Load Python module
@@ -37,6 +78,11 @@ def load_python_module(python_file: Path):
         FileNotFoundError: If file does not exist
         ImportError: If loading fails
     """
+    # Convert path based on environment variable configuration
+    python_file_str = str(python_file)
+    converted_path = convert_path_by_env(python_file_str)
+    python_file = Path(converted_path)
+    
     if not python_file.exists():
         raise FileNotFoundError(f"Python file not found: {python_file}")
     
