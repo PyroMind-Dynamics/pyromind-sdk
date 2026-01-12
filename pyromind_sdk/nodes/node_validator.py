@@ -57,6 +57,12 @@ def validate_node_class(node_class: type, node_name: str) -> Dict[str, Any]:
         else:
             results["info"][attr.lower()] = getattr(node_class, attr)
     
+    # Check optional attributes
+    optional_attrs = ["DISPLAY_NAME"]
+    for attr in optional_attrs:
+        if hasattr(node_class, attr):
+            results["info"][attr.lower()] = getattr(node_class, attr)
+    
     results["info"]["base_classes"] = [base.__name__ for base in node_class.__bases__]
     
     # Check PodExecutionNode specific attributes
