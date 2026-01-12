@@ -351,64 +351,152 @@ def execute_command_template(
             all_replacements.update(inputs)
         all_replacements.update(output_file_paths)
         
-        for part in command_parts:
+        for i, part in enumerate(command_parts):
             if isinstance(part, str):
+                # 检查是否是 bash -c 后面的命令字符串（包含 && 等 shell 操作符）
+                # 如果前一个 part 是 "-c"，说明当前 part 是 bash -c 后面的完整命令字符串
+                is_bash_c_command = (i > 0 and 
+                                    isinstance(command_parts[i-1], str) and 
+                                    command_parts[i-1] == "-c" and
+                                    (" && " in part or " || " in part or " ; " in part))
+                
                 # 检查是否是 Python 节点的特殊参数（--inputs 或 --output-paths）
-                if ("--inputs" in part and inputs) or "--output-paths" in part:
-                    # 解析命令部分，替换特殊参数中的占位符
-                    try:
-                        parsed_args = shlex.split(part)
-                    except:
-                        parsed_args = part.split()
-                    
-                    new_parts = []
-                    j = 0
-                    while j < len(parsed_args):
-                        arg = parsed_args[j]
-                        new_parts.append(arg)
+                if (("--inputs" in part and inputs) or "--output-paths" in part):
+                    if is_bash_c_command:
+                        # 对于 bash -c 后面的命令字符串，保持原样，只替换 JSON 中的占位符
+                        # 使用正则表达式匹配被引号包裹的 JSON 字符串
                         
-                        # 处理 --inputs 参数
-                        if arg == "--inputs" and j + 1 < len(parsed_args) and inputs:
-                            inputs_str = parsed_args[j + 1]
+                        def replace_json_placeholders(match, replacer_func):
+                            """通用的 JSON 占位符替换函数
+                            
+                            Args:
+                                match: 正则表达式匹配对象
+                                replacer_func: 用于替换 JSON 字典中占位符的函数，接受字典并返回修改后的字典
+                            
+                            Returns:
+                                替换后的带引号的 JSON 字符串，或原字符串（如果解析失败）
+                            """
+                            quote_char = match.group(1)  # 引号字符（' 或 "）
+                            json_str = match.group(2)  # JSON 字符串内容
+                            
                             try:
-                                inputs_dict = json.loads(inputs_str)
-                                # 替换占位符为实际值
-                                for key, value in inputs.items():
-                                    if key in inputs_dict:
-                                        placeholder = f"{{{{{key}}}}}"
-                                        if inputs_dict[key] == placeholder:
-                                            inputs_dict[key] = str(value)
-                                # 重新构建 JSON 字符串
-                                new_inputs_json = json.dumps(inputs_dict, ensure_ascii=False)
-                                new_parts.append(new_inputs_json)
-                                j += 1  # 跳过原值
-                            except (json.JSONDecodeError, IndexError):
-                                new_parts.append(parsed_args[j + 1])
-                                j += 1
+                                json_dict = json.loads(json_str)
+                                # 使用提供的替换函数替换占位符
+                                json_dict = replacer_func(json_dict)
+                                new_json = json.dumps(json_dict, ensure_ascii=False)
+                                return f"{quote_char}{new_json}{quote_char}"
+                            except json.JSONDecodeError:
+                                return match.group(0)  # 解析失败，返回原字符串
                         
-                        # 处理 --output-paths 参数
-                        elif arg == "--output-paths" and j + 1 < len(parsed_args):
-                            output_paths_str = parsed_args[j + 1]
-                            try:
-                                output_paths_dict = json.loads(output_paths_str)
-                                # 替换占位符为实际文件路径
+                        # 替换 --output-paths 参数中的占位符
+                        if "--output-paths" in part:
+                            def replace_output_paths_placeholders(json_dict):
+                                """替换 output_paths JSON 中的占位符"""
                                 for output_name, output_path in output_file_paths.items():
-                                    if output_name in output_paths_dict:
+                                    if output_name in json_dict:
                                         placeholder = f"{{{{{output_name}}}}}"
-                                        if output_paths_dict[output_name] == placeholder:
-                                            output_paths_dict[output_name] = output_path
-                                # 重新构建 JSON 字符串
-                                new_output_paths_json = json.dumps(output_paths_dict, ensure_ascii=False)
-                                new_parts.append(new_output_paths_json)
-                                j += 1  # 跳过原值
-                            except (json.JSONDecodeError, IndexError):
-                                new_parts.append(parsed_args[j + 1])
-                                j += 1
+                                        if json_dict[output_name] == placeholder:
+                                            json_dict[output_name] = output_path
+                                return json_dict
+                            
+                            # 匹配 --output-paths 后面被单引号或双引号包裹的 JSON 字符串
+                            # 先匹配单引号字符串（更简单，因为单引号内不能转义）
+                            part = re.sub(
+                                r'--output-paths\s+(\')([^\']*)\1',
+                                lambda m: f'--output-paths {replace_json_placeholders(m, replace_output_paths_placeholders)}',
+                                part
+                            )
+                            # 再匹配双引号字符串（需要处理转义）
+                            part = re.sub(
+                                r'--output-paths\s+(")((?:(?:\\.|[^"\\])*))"',
+                                lambda m: f'--output-paths {replace_json_placeholders(m, replace_output_paths_placeholders)}',
+                                part
+                            )
                         
-                        j += 1
-                    
-                    # 重新组合命令部分
-                    actual_command_parts.append(" ".join(shlex.quote(str(p)) for p in new_parts))
+                        # 替换 --inputs 参数中的占位符
+                        if "--inputs" in part and inputs:
+                            def replace_inputs_placeholders(json_dict):
+                                """替换 inputs JSON 中的占位符"""
+                                for key, value in inputs.items():
+                                    if key in json_dict:
+                                        placeholder = f"{{{{{key}}}}}"
+                                        if json_dict[key] == placeholder:
+                                            json_dict[key] = str(value)
+                                return json_dict
+                            
+                            # 匹配 --inputs 后面被单引号或双引号包裹的 JSON 字符串
+                            # 先匹配单引号字符串（更简单，因为单引号内不能转义）
+                            part = re.sub(
+                                r'--inputs\s+(\')([^\']*)\1',
+                                lambda m: f'--inputs {replace_json_placeholders(m, replace_inputs_placeholders)}',
+                                part
+                            )
+                            # 再匹配双引号字符串（需要处理转义）
+                            part = re.sub(
+                                r'--inputs\s+(")((?:(?:\\.|[^"\\])*))"',
+                                lambda m: f'--inputs {replace_json_placeholders(m, replace_inputs_placeholders)}',
+                                part
+                            )
+                        
+                        # 替换其他占位符（非 JSON 中的）
+                        actual_part = replace_template(part, all_replacements)
+                        actual_command_parts.append(actual_part)
+                    else:
+                        # 不是 bash -c 命令，使用原来的解析方式
+                        # 解析命令部分，替换特殊参数中的占位符
+                        try:
+                            parsed_args = shlex.split(part)
+                        except:
+                            parsed_args = part.split()
+                        
+                        new_parts = []
+                        j = 0
+                        while j < len(parsed_args):
+                            arg = parsed_args[j]
+                            new_parts.append(arg)
+                            
+                            # 处理 --inputs 参数
+                            if arg == "--inputs" and j + 1 < len(parsed_args) and inputs:
+                                inputs_str = parsed_args[j + 1]
+                                try:
+                                    inputs_dict = json.loads(inputs_str)
+                                    # 替换占位符为实际值
+                                    for key, value in inputs.items():
+                                        if key in inputs_dict:
+                                            placeholder = f"{{{{{key}}}}}"
+                                            if inputs_dict[key] == placeholder:
+                                                inputs_dict[key] = str(value)
+                                    # 重新构建 JSON 字符串
+                                    new_inputs_json = json.dumps(inputs_dict, ensure_ascii=False)
+                                    new_parts.append(new_inputs_json)
+                                    j += 1  # 跳过原值
+                                except (json.JSONDecodeError, IndexError):
+                                    new_parts.append(parsed_args[j + 1])
+                                    j += 1
+                            
+                            # 处理 --output-paths 参数
+                            elif arg == "--output-paths" and j + 1 < len(parsed_args):
+                                output_paths_str = parsed_args[j + 1]
+                                try:
+                                    output_paths_dict = json.loads(output_paths_str)
+                                    # 替换占位符为实际文件路径
+                                    for output_name, output_path in output_file_paths.items():
+                                        if output_name in output_paths_dict:
+                                            placeholder = f"{{{{{output_name}}}}}"
+                                            if output_paths_dict[output_name] == placeholder:
+                                                output_paths_dict[output_name] = output_path
+                                    # 重新构建 JSON 字符串
+                                    new_output_paths_json = json.dumps(output_paths_dict, ensure_ascii=False)
+                                    new_parts.append(new_output_paths_json)
+                                    j += 1  # 跳过原值
+                                except (json.JSONDecodeError, IndexError):
+                                    new_parts.append(parsed_args[j + 1])
+                                    j += 1
+                            
+                            j += 1
+                        
+                        # 重新组合命令部分
+                        actual_command_parts.append(" ".join(shlex.quote(str(p)) for p in new_parts))
                 else:
                     # 普通命令模板：替换所有占位符
                     actual_part = replace_template(part, all_replacements)
@@ -417,7 +505,6 @@ def execute_command_template(
                 actual_command_parts.append(part)
         
         result["command"] = actual_command_parts
-        
         # 执行命令
         process_result = subprocess.run(
             actual_command_parts,
@@ -430,7 +517,6 @@ def execute_command_template(
         result["stdout"] = process_result.stdout
         result["stderr"] = process_result.stderr
         result["success"] = process_result.returncode == 0
-        
         # 读取输出文件
         for output_name, file_path in output_file_paths.items():
             # 等待一下确保文件写入完成

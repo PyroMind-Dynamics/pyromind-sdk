@@ -91,41 +91,38 @@ def build_command_template(
     # Build command parts
     command_parts = []
     
-    # Check if bash -c is needed
-    needs_bash = bool(conda_env or workdir or environment)
+    # Check if bash -c is needed\
+    if conda_env is None:
+        conda_env = "base"
+    # Build bash command
+    bash_commands = []
     
-    if needs_bash:
-        # Build bash command
-        bash_commands = []
-        
-        # 1. Environment variables
-        if environment:
-            for key, value in environment.items():
-                value_escaped = shlex.quote(str(value))
-                bash_commands.append(f"export {key}={value_escaped}")
-        
-        # 2. Working directory
-        if workdir:
-            workdir_escaped = shlex.quote(str(workdir))
-            bash_commands.append(f"cd {workdir_escaped}")
-        
-        # 3. Conda environment
-        if conda_env:
-            conda_env_escaped = shlex.quote(str(conda_env))
-            bash_commands.append(f"source /workspace/.conda/bin/activate && conda activate {conda_env_escaped} || source activate {conda_env_escaped}")
-        
-        # 4. Execute wrapper command
-        wrapper_cmd_full = " ".join([wrapper_cmd] + wrapper_args)
-        bash_commands.append(wrapper_cmd_full)
-        
-        # Combine all commands
-        full_command = " && ".join(bash_commands)
-        command_parts = ["bash", "-c", full_command]
-    else:
-        # Simple case: execute directly
-        wrapper_cmd_full = " ".join([wrapper_cmd] + wrapper_args)
-        command_parts = ["bash", "-c", wrapper_cmd_full]
+    # 1. Environment variables
+    if environment:
+        for key, value in environment.items():
+            value_escaped = shlex.quote(str(value))
+            bash_commands.append(f"export {key}={value_escaped}")
     
+    # 3. Conda environment
+    if conda_env:
+        conda_env_escaped = shlex.quote(str(conda_env))
+        # Use explicit bash -c for conda activation to ensure proper execution
+        bash_commands.append(f"source /workspace/.conda/bin/activate")
+        bash_commands.append(f"conda activate {conda_env_escaped}")
+        
+    # 2. Working directory
+    if workdir:
+        workdir_escaped = shlex.quote(str(workdir))
+        bash_commands.append(f"cd {workdir_escaped}")
+    
+    
+    # 4. Execute wrapper command
+    wrapper_cmd_full = " ".join([wrapper_cmd] + wrapper_args)
+    bash_commands.append(wrapper_cmd_full)
+    
+    # Combine all commands
+    full_command = " && ".join(bash_commands)
+    command_parts = ["bash", "-c", full_command]
     return command_parts
 
 
