@@ -23,51 +23,6 @@ except ImportError:
     from pyromind_sdk.nodes.type_converter import convert_string_to_python_type, convert_inputs, validate_output_type
 
 
-def convert_path_by_env(path: str) -> str:
-    path_map_json = os.environ.get('PYTHON_NODE_PATH_PREFIX_MAP')
-    if not path_map_json:
-        return path
-    
-    try:
-        path_map = json.loads(path_map_json)
-    except (json.JSONDecodeError, TypeError):
-        return path
-    
-    if not isinstance(path_map, dict):
-        return path
-    
-    to_prefix = path_map.get("to_prefix")
-    pattern = path_map.get("pattern")
-    
-    if not to_prefix or not pattern or "{uid}" not in pattern:
-        return path
-    
-    # Extract pattern prefix (everything before {uid})
-    pattern_prefix = pattern.split("{uid}")[0]
-    
-    # Check if path matches the pattern
-    if not path.startswith(pattern_prefix):
-        return path
-    
-    # Remove pattern prefix to get remaining path
-    remaining = path[len(pattern_prefix):]
-    
-    if remaining:
-        parts = remaining.split("/", 1)
-        if len(parts) > 1:
-            rest_path = "/" + parts[1]
-        else:
-            rest_path = ""
-    else:
-        rest_path = ""
-    
-    # Build converted path
-    if to_prefix.endswith("/"):
-        return to_prefix.rstrip("/") + rest_path
-    else:
-        return to_prefix + rest_path
-
-
 def load_python_module(python_file: Path):
     """
     Load Python module
@@ -82,10 +37,6 @@ def load_python_module(python_file: Path):
         FileNotFoundError: If file does not exist
         ImportError: If loading fails
     """
-    # Convert path based on environment variable configuration
-    python_file_str = str(python_file)
-    converted_path = convert_path_by_env(python_file_str)
-    python_file = Path(converted_path)
     
     if not python_file.exists():
         raise FileNotFoundError(f"Python file not found: {python_file}")
