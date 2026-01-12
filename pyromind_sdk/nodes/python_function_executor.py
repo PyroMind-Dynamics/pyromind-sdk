@@ -34,7 +34,7 @@ def build_command_template(
         output_names: Output placeholder name list
         return_types: Return type list (optional, for type validation)
         python_command: Python execution command (default: "python3")
-        conda_env: Conda environment name (optional)
+        conda_env: Conda environment name (optional, defaults to "base" if not specified)
         workdir: Working directory (optional)
         environment: Environment variable dictionary (optional)
         
@@ -91,6 +91,10 @@ def build_command_template(
     # Build command parts
     command_parts = []
     
+    # Default conda_env to "base" if not specified
+    if conda_env is None:
+        conda_env = "base"
+    
     # Check if bash -c is needed
     needs_bash = bool(conda_env or workdir or environment)
     
@@ -109,7 +113,7 @@ def build_command_template(
             workdir_escaped = shlex.quote(str(workdir))
             bash_commands.append(f"cd {workdir_escaped}")
         
-        # 3. Conda environment
+        # 3. Conda environment (always activate if conda_env is set, default is "base")
         if conda_env:
             conda_env_escaped = shlex.quote(str(conda_env))
             bash_commands.append(f"source /workspace/.conda/bin/activate && conda activate {conda_env_escaped} || source activate {conda_env_escaped}")
