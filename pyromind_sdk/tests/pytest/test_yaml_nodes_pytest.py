@@ -8,11 +8,14 @@ functions to test YAML node configurations.
 
 import pytest
 from pathlib import Path
+import sys
+
 try:
     import torch
-    GPU_AVAILABLE = torch.cuda.is_available()
+    TORCH_AVALIABLE = True
 except ImportError:
-    GPU_AVAILABLE = False
+    TORCH_AVALIABLE = False
+
 from pyromind_sdk.tests.test_yaml_nodes import test_yaml_file, test_directory
 
 
@@ -57,7 +60,7 @@ class TestYAMLNodes:
         ("echo_node.yaml", True),
         ("multi_input_node.yaml", True),
         ("customer_inputs_node.yaml", True),
-        ("jupyter_gpu_node.yaml", GPU_AVAILABLE),  # Will be dynamically adjusted based on GPU availability
+        ("jupyter_gpu_node.yaml", TORCH_AVALIABLE),  # Will be dynamically adjusted based on GPU availability
     ])
     def test_yaml_file_execution(self, yaml_file, expected_success):
         """Test that YAML files can be executed successfully (or fail as expected)"""
