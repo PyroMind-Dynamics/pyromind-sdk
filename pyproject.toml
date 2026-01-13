@@ -26,6 +26,9 @@ classifiers = [
 ]
 dependencies = [
     "pyyaml>=6.0",
+    "requests>=2.28.0",
+    "pydantic>=2.0.0",
+    "urllib3>=1.26.0",
 ]
 
 [project.optional-dependencies]
@@ -41,7 +44,7 @@ Repository = "https://github.com/pyromind/pyromind-sdk"
 Issues = "https://github.com/pyromind/pyromind-sdk/issues"
 
 [tool.setuptools]
-packages = ["pyromind_sdk", "pyromind_sdk.common", "pyromind_sdk.nodes", "pyromind_sdk.tests"]
+packages = ["pyromind_sdk", "pyromind_sdk.common", "pyromind_sdk.nodes", "pyromind_sdk.tests", "pyromind_sdk.client"]
 
 [tool.setuptools.package-data]
 pyromind_sdk = ["*.md"]

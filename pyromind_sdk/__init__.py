@@ -19,6 +19,17 @@ from .nodes import (
     yaml_to_node_class,
 )
 
+# Export API client functionality
+from .client import (
+    PyroMindClient,
+    PyroMindAPIError,
+    SandboxesClient,
+    InstanceClient,
+    InferenceClient,
+    TrainingClient,
+    PyroMindAPIClient,
+)
+
 __all__ = [
     "__version__",
     # YAML nodes functionality
@@ -27,5 +38,13 @@ __all__ = [
     "create_node_class_from_yaml",
     "convert_node_class_to_yaml",
     "yaml_to_node_class",
+    # API client functionality
+    "PyroMindClient",
+    "PyroMindAPIError",
+    "SandboxesClient",
+    "InstanceClient",
+    "InferenceClient",
+    "TrainingClient",
+    "PyroMindAPIClient",
 ]
 

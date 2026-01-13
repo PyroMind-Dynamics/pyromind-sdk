@@ -90,10 +90,15 @@ def build_command_template(
     
     # Build command parts
     command_parts = []
-    
+
     # Check if bash -c is needed\
     if conda_env is None:
         conda_env = "base"
+    #if conda not exists, raise a warning
+    if conda_env is not None and not Path("/workspace/.conda/bin/activate").exists():
+        print(f"Warning: Conda environment {conda_env} not found, using base environment")
+        conda_env = None
+
     # Build bash command
     bash_commands = []
     

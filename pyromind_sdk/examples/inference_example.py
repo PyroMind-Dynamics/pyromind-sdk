@@ -1,0 +1,166 @@
+#!/usr/bin/env python3
+"""
+Inference Job Management Example
+
+This example demonstrates how to create, manage, and interact with inference jobs.
+
+The API key can be provided via:
+1. PYROMIND_API_KEY environment variable (recommended)
+2. api_key parameter when initializing the client
+
+If neither is provided, the client will raise a ValueError.
+"""
+
+from pyromind_sdk import PyroMindAPIClient, PyroMindAPIError
+from pyromind_sdk.client.models import (
+    InferenceJobCreateRequest,
+    ResourceConfig,
+)
+
+
+def create_inference_job_example():
+    """Example: Create a new inference job"""
+    # API key is read from PYROMIND_API_KEY environment variable
+    client = PyroMindAPIClient()
+    
+    try:
+        print("Creating a new inference job...")
+        job = client.inference.create(
+            InferenceJobCreateRequest(
+                name="example-inference",
+                model_path="/models/my-model",
+                image="pytorch/pytorch:latest",
+                resources=ResourceConfig(
+                    cpu="4",
+                    memory="8Gi",
+                    gpu=1,
+                    gpu_type="nvidia-tesla-v100"
+                ),
+                environment_variables={
+                    "MODEL_PATH": "/models/my-model",
+                    "BATCH_SIZE": "32"
+                },
+                endpoint_url="https://api.example.com/inference"
+            )
+        )
+        print(f"✓ Inference job created successfully!")
+        print(f"  ID: {job.id}")
+        print(f"  Name: {job.name}")
+        print(f"  Status: {job.status}")
+        print(f"  Model Path: {job.model_path}")
+        if job.endpoint_url:
+            print(f"  Endpoint URL: {job.endpoint_url}")
+        return job.id
+        
+    except PyroMindAPIError as e:
+        print(f"✗ Failed to create inference job: {e.message}")
+        return None
+    finally:
+        client.close()
+
+
+def list_inference_jobs_example():
+    """Example: List all inference jobs"""
+    # API key is read from PYROMIND_API_KEY environment variable
+    client = PyroMindAPIClient()
+    
+    try:
+        print("Listing all inference jobs...")
+        jobs = client.inference.list()
+        print(f"Found {len(jobs)} inference job(s):")
+        
+        for job in jobs:
+            print(f"\n  Job: {job.name}")
+            print(f"    ID: {job.id}")
+            print(f"    Status: {job.status}")
+            print(f"    Model Path: {job.model_path}")
+            print(f"    Image: {job.image}")
+            if job.endpoint_url:
+                print(f"    Endpoint URL: {job.endpoint_url}")
+        
+        return jobs
+        
+    except PyroMindAPIError as e:
+        print(f"✗ Failed to list inference jobs: {e.message}")
+        return []
+    finally:
+        client.close()
+
+
+def get_inference_job_example(job_id: str):
+    """Example: Get a specific inference job"""
+    # API key is read from PYROMIND_API_KEY environment variable
+    client = PyroMindAPIClient()
+    
+    try:
+        print(f"Getting inference job {job_id}...")
+        job = client.inference.get_job(job_id)
+        print(f"✓ Inference job details:")
+        print(f"  Name: {job.name}")
+        print(f"  Status: {job.status}")
+        print(f"  Model Path: {job.model_path}")
+        print(f"  Image: {job.image}")
+        if job.resources:
+            print(f"  Resources:")
+            print(f"    CPU: {job.resources.cpu}")
+            print(f"    Memory: {job.resources.memory}")
+            print(f"    GPU: {job.resources.gpu}")
+        if job.endpoint_url:
+            print(f"  Endpoint URL: {job.endpoint_url}")
+        return job
+        
+    except PyroMindAPIError as e:
+        print(f"✗ Failed to get inference job: {e.message}")
+        return None
+    finally:
+        client.close()
+
+
+def delete_inference_job_example(job_id: str):
+    """Example: Delete an inference job"""
+    # API key is read from PYROMIND_API_KEY environment variable
+    client = PyroMindAPIClient()
+    
+    try:
+        print(f"Deleting inference job {job_id}...")
+        client.inference.delete(job_id)
+        print(f"✓ Inference job deleted successfully!")
+        
+    except PyroMindAPIError as e:
+        print(f"✗ Failed to delete inference job: {e.message}")
+    finally:
+        client.close()
+
+
+def main():
+    """Main example function"""
+    print("=" * 60)
+    print("Inference Job Management Examples")
+    print("=" * 60)
+    
+    # List existing jobs
+    jobs = list_inference_jobs_example()
+    
+    # If we have jobs, demonstrate operations
+    if jobs:
+        job_id = jobs[0].id
+        print(f"\nUsing inference job: {job_id}")
+        
+        # Get job details
+        get_inference_job_example(job_id)
+    else:
+        print("\nNo existing inference jobs found. Creating a new one...")
+        job_id = create_inference_job_example()
+        
+        if job_id:
+            # Wait a bit for job to be ready
+            import time
+            print("\nWaiting for inference job to be ready...")
+            time.sleep(2)
+            
+            # Get job details
+            get_inference_job_example(job_id)
+
+
+if __name__ == "__main__":
+    main()
