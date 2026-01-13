@@ -52,9 +52,10 @@ def execute_jupyter_gpu_code(message: str) -> Dict[str, Any]:
         print(f'GPU count: {torch.cuda.device_count()}')
         print(f'GPU name: {torch.cuda.get_device_name(0)}')
     
-    message += f'CUDA available: {torch.cuda.is_available()}'
-    message += f'GPU count: {torch.cuda.device_count()}'
-    message += f'GPU name: {torch.cuda.get_device_name(0)}'
+    message += f'CUDA available: {torch.cuda.is_available()}\n'
+    message += f'GPU count: {torch.cuda.device_count()}\n'
+    message += f'GPU name: {torch.cuda.get_device_name(0)}\n'
+    execution_output = message
     # Build return result (key names must match output names defined in YAML)
     result = {
         "gpu_info": gpu_info,
