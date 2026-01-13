@@ -9,12 +9,11 @@ import json
 from typing import Dict, Any
 
 
-def execute_jupyter_gpu_code(python_code: str, message: str) -> Dict[str, Any]:
+def execute_jupyter_gpu_code(message: str) -> Dict[str, Any]:
     """
     Execute Python code in Jupyter environment and check GPU availability
     
     Args:
-        python_code: Python code string to execute
         message: Custom message
         
     Returns:
@@ -22,6 +21,15 @@ def execute_jupyter_gpu_code(python_code: str, message: str) -> Dict[str, Any]:
         - gpu_info: GPU information
         - execution_result: Code execution result
         - message: Custom message
+    """
+    python_code = """
+import torch
+if torch.cuda.is_available():
+    print(f'CUDA available: {torch.cuda.is_available()}')
+    print(f'GPU count: {torch.cuda.device_count()}')
+    print(f'GPU name: {torch.cuda.get_device_name(0)}')
+else:
+    print('CUDA not available')
     """
     # Check GPU availability
     gpu_info = "No GPU detected"

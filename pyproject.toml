@@ -47,3 +47,12 @@ packages = ["pyromind_sdk", "pyromind_sdk.common", "pyromind_sdk.nodes", "pyromi
 pyromind_sdk = ["*.md"]
 "pyromind_sdk.examples" = ["*.yaml", "utils/*.py"]
 
+[tool.pytest.ini_options]
+# Exclude test_yaml_nodes.py from pytest collection
+# This file contains utility functions, not pytest test functions
+python_files = ["test_*.py", "*_test.py"]
+norecursedirs = []
+testpaths = ["pyromind_sdk/tests"]
+# Exclude test_yaml_nodes.py specifically
+python_functions = ["test_*"]
+

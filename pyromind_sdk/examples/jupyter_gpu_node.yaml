@@ -17,18 +17,6 @@ function_name: "execute_jupyter_gpu_code"         # 函数名
 python_command: "python3"                         # Python 执行命令（默认: python3）
 
 parameters:
-  - name: python_code
-    dtype: "STRING"
-    default: |
-      import torch
-      if torch.cuda.is_available():
-          print(f'CUDA available: {torch.cuda.is_available()}')
-          print(f'GPU count: {torch.cuda.device_count()}')
-          print(f'GPU name: {torch.cuda.get_device_name(0)}')
-      else:
-          print('CUDA not available')
-    type: "input"
-    required_type: "required"
   - name: message
     dtype: "STRING"
     default: "Jupyter GPU Node executed successfully"
