@@ -22,15 +22,6 @@ def execute_jupyter_gpu_code(message: str) -> Dict[str, Any]:
         - execution_result: Code execution result
         - message: Custom message
     """
-    python_code = """
-import torch
-if torch.cuda.is_available():
-    print(f'CUDA available: {torch.cuda.is_available()}')
-    print(f'GPU count: {torch.cuda.device_count()}')
-    print(f'GPU name: {torch.cuda.get_device_name(0)}')
-else:
-    print('CUDA not available')
-    """
     # Check GPU availability
     gpu_info = "No GPU detected"
     try:
@@ -54,44 +45,16 @@ else:
     # Execute Python code
     execution_result = "Code executed successfully"
     execution_output = ""
-    try:
-        # Create execution environment
-        exec_globals = {
-            '__builtins__': __builtins__,
-        }
-        exec_locals = {}
-        
-        # Execute code and capture output
-        import io
-        import sys
-        from contextlib import redirect_stdout, redirect_stderr
-        
-        stdout_capture = io.StringIO()
-        stderr_capture = io.StringIO()
-        
-        try:
-            with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
-                exec(python_code, exec_globals, exec_locals)
-            
-            stdout_output = stdout_capture.getvalue()
-            stderr_output = stderr_capture.getvalue()
-            
-            if stdout_output:
-                execution_output = stdout_output
-            if stderr_output:
-                if execution_output:
-                    execution_output += "\n" + stderr_output
-                else:
-                    execution_output = stderr_output
-                    
-        except Exception as e:
-            execution_result = f"Execution error: {str(e)}"
-            execution_output = str(e)
-            
-    except Exception as e:
-        execution_result = f"Code execution failed: {str(e)}"
-        execution_output = str(e)
+
+    import torch
+    if torch.cuda.is_available():
+        print(f'CUDA available: {torch.cuda.is_available()}')
+        print(f'GPU count: {torch.cuda.device_count()}')
+        print(f'GPU name: {torch.cuda.get_device_name(0)}')
     
+    message += f'CUDA available: {torch.cuda.is_available()}'
+    message += f'GPU count: {torch.cuda.device_count()}'
+    message += f'GPU name: {torch.cuda.get_device_name(0)}'
     # Build return result (key names must match output names defined in YAML)
     result = {
         "gpu_info": gpu_info,

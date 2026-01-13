@@ -531,14 +531,8 @@ def execute_command_template(
             content = read_output_file(file_path)
             if content is not None:
                 content = content.rstrip('\n\r')
-                if content:
-                    result["outputs"][output_name] = content
-                else:
-                    # 输出文件为空，视为错误
-                    file_size = os.path.getsize(file_path)
-                    error_msg = f"Output file exists but is empty: {file_path} (size: {file_size})"
-                    result["errors"].append(error_msg)
-                    result["success"] = False
+                # 允许空输出（空字符串也是有效的输出值）
+                result["outputs"][output_name] = content
             else:
                 if os.path.exists(file_path):
                     file_size = os.path.getsize(file_path)
