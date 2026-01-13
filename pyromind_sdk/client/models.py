@@ -202,12 +202,11 @@ class JupyterAPIResponse(BaseModel):
 # Inference Models
 class InferenceJobCreateRequest(BaseModel):
     """Request model for creating an inference job"""
-    name: str
     model_path: str
-    image: str
+    inference_framework: str
+    timeout: Optional[int] = None
     resources: Optional[ResourceConfig] = None
     environment_variables: Optional[Dict[str, str]] = None
-    endpoint_url: Optional[str] = None
 
 
 class InferenceJobResponse(BaseModel):
@@ -225,19 +224,21 @@ class InferenceJobResponse(BaseModel):
 
 class InferenceJobListAPIResponse(BaseModel):
     """List inference jobs API response"""
-    inference_jobs: List[InferenceJobResponse] = Field(alias="inference_jobs")
+    inference_jobs: List[InferenceJobResponse] = Field(default_factory=list)
     page: Optional[int] = None
     page_size: Optional[int] = None
     total: Optional[int] = None
     has_more: Optional[bool] = None
-    
-    class Config:
-        populate_by_name = True  # Allow both field name and alias
 
 
 class InferenceJobAPIResponse(BaseModel):
     """Single inference job API response"""
     job: InferenceJobResponse
+
+
+class InferenceJobCreateAPIResponse(BaseModel):
+    """Create inference job API response"""
+    job_id: str
 
 
 # Training Models

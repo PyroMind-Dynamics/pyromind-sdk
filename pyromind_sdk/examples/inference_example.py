@@ -25,35 +25,40 @@ def create_inference_job_example():
     
     try:
         print("Creating a new inference job...")
-        job = client.inference.create(
+        job_id = client.inference.create(
             InferenceJobCreateRequest(
-                name="example-inference",
-                model_path="/models/my-model",
-                image="pytorch/pytorch:latest",
+                model_path="/models/Qwen3-VL-30B-A3B-Thinking-FP8",
+                inference_framework="sglang",
+                timeout=7200,
                 resources=ResourceConfig(
-                    cpu="4",
-                    memory="8Gi",
-                    gpu=1,
-                    gpu_type="nvidia-tesla-v100"
+                    cpu="16",
+                    memory="32Gi",
+                    gpu=1
                 ),
                 environment_variables={
-                    "MODEL_PATH": "/models/my-model",
-                    "BATCH_SIZE": "32"
-                },
-                endpoint_url="https://api.example.com/inference"
+                    "MODEL_PATH": "/models/Qwen3-VL-30B-A3B-Thinking-FP8",
+                }
             )
         )
         print(f"✓ Inference job created successfully!")
-        print(f"  ID: {job.id}")
-        print(f"  Name: {job.name}")
-        print(f"  Status: {job.status}")
-        print(f"  Model Path: {job.model_path}")
-        if job.endpoint_url:
-            print(f"  Endpoint URL: {job.endpoint_url}")
-        return job.id
+        print(f"  Job ID: {job_id}")
+        
+        # Optionally get the full job details
+        try:
+            job = client.inference.get_job(job_id)
+            print(f"  Model Path: {job.model_path}")
+            print(f"  Status: {job.status}")
+            if job.endpoint_url:
+                print(f"  Endpoint URL: {job.endpoint_url}")
+        except Exception as e:
+            print(f"  Note: Could not fetch job details: {e}")
+        
+        return job_id
         
     except PyroMindAPIError as e:
         print(f"✗ Failed to create inference job: {e.message}")
+        if e.response:
+            print(f"  Response: {e.response}")
         return None
     finally:
         client.close()
