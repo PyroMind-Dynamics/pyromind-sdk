@@ -19,9 +19,9 @@ except ImportError:
 from pyromind_sdk.tests.test_yaml_nodes import test_yaml_file, test_directory
 
 
-# Get the examples directory path
-# From tests/pytest/ to examples/ requires going up 3 levels
-EXAMPLES_DIR = Path(__file__).parent.parent.parent / "examples"
+# Get the examples/nodes directory path
+# From tests/pytest/ to examples/nodes/ requires going up 3 levels
+EXAMPLES_DIR = Path(__file__).parent.parent.parent / "examples" / "nodes"
 
 
 class TestYAMLNodes:

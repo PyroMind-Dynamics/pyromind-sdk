@@ -9,7 +9,7 @@
 
 **运行方式：**
 ```bash
-python pyromind_sdk/examples/api_client_basic.py
+python pyromind_sdk/examples/openapi/api_client_basic.py
 ```
 
 ### 2. `sandbox_example.py` - Sandbox 管理示例
@@ -17,7 +17,7 @@ python pyromind_sdk/examples/api_client_basic.py
 
 **运行方式：**
 ```bash
-python pyromind_sdk/examples/sandbox_example.py
+python pyromind_sdk/examples/openapi/sandbox_example.py
 ```
 
 **主要功能：**
@@ -33,7 +33,7 @@ python pyromind_sdk/examples/sandbox_example.py
 
 **运行方式：**
 ```bash
-python pyromind_sdk/examples/jupyter_instance_example.py
+python pyromind_sdk/examples/openapi/jupyter_instance_example.py
 ```
 
 **主要功能：**
@@ -49,7 +49,7 @@ python pyromind_sdk/examples/jupyter_instance_example.py
 
 **运行方式：**
 ```bash
-python pyromind_sdk/examples/inference_example.py
+python pyromind_sdk/examples/openapi/inference_example.py
 ```
 
 **主要功能：**
@@ -63,7 +63,7 @@ python pyromind_sdk/examples/inference_example.py
 
 **运行方式：**
 ```bash
-python pyromind_sdk/examples/training_example.py
+python pyromind_sdk/examples/openapi/training_example.py
 ```
 
 **主要功能：**
@@ -83,7 +83,7 @@ python pyromind_sdk/examples/training_example.py
 
 **运行方式：**
 ```bash
-python pyromind_sdk/examples/complete_workflow_example.py
+python pyromind_sdk/examples/openapi/complete_workflow_example.py
 ```
 
 ## API Key 配置
@@ -101,7 +101,7 @@ export PYROMIND_API_KEY="your-api-key-here"
 或者在运行命令时直接设置：
 
 ```bash
-PYROMIND_API_KEY="your-api-key-here" python pyromind_sdk/examples/api_client_basic.py
+PYROMIND_API_KEY="your-api-key-here" python pyromind_sdk/examples/openapi/api_client_basic.py
 ```
 
 **注意：** 如果环境变量未设置，客户端会抛出 `ValueError` 错误，提示需要提供 API Key。

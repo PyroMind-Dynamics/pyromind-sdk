@@ -255,19 +255,19 @@ def main():
         epilog="""
 Examples:
   # Test a single YAML file
-  python test_yaml_nodes.py hello_world_node.yaml
+  python test_yaml_nodes.py examples/nodes/hello_world_node.yaml
   
   # Test with verbose output
-  python test_yaml_nodes.py hello_world_node.yaml --verbose
+  python test_yaml_nodes.py examples/nodes/hello_world_node.yaml --verbose
   
   # Execute the command template
-  python test_yaml_nodes.py hello_world_node.yaml --execute
+  python test_yaml_nodes.py examples/nodes/hello_world_node.yaml --execute
   
   # Test with custom inputs
-  python test_yaml_nodes.py hello_world_node.yaml --execute --inputs '{"name": "Alice"}'
+  python test_yaml_nodes.py examples/nodes/hello_world_node.yaml --execute --inputs '{"name": "Alice"}'
   
-  # Test all YAML files in a directory
-  python test_yaml_nodes.py --directory examples
+  # Test all YAML files in a directory (default: examples/nodes)
+  python test_yaml_nodes.py --directory examples/nodes
         """
     )
     
@@ -283,7 +283,7 @@ Examples:
     # 默认路径
     if not args.yaml_path:
         script_dir = Path(__file__).parent.parent
-        default_dir = script_dir / "examples"
+        default_dir = script_dir / "examples" / "nodes"
         if default_dir.exists():
             args.yaml_path = str(default_dir)
             args.directory = True
