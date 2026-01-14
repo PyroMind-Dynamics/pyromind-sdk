@@ -4,7 +4,7 @@ Data models for PyroMind API Client SDK
 This module defines Pydantic models for request and response data structures.
 """
 
-from typing import Optional, List, Dict, Any, Literal
+from typing import Optional, List, Dict, Any, Literal, Union
 from datetime import datetime
 from enum import Enum
 from pydantic import BaseModel, Field
@@ -169,20 +169,19 @@ class VncAPIResponse(BaseModel):
 # Instance (Jupyter) Models
 class JupyterRequest(BaseModel):
     """Request model for creating/updating a Jupyter instance"""
-    name: str
-    image: str
+    name: Optional[str] = None
     resources: Optional[ResourceConfig] = None
-    environment_variables: Optional[Dict[str, str]] = None
-    auto_pause: Optional[bool] = False
-    auto_pause_timeout: Optional[int] = None
+    configuration: Optional[Dict[str, Any]] = None
+    public_key: Optional[Union[str, List[str]]] = None
+    timeout: Optional[int] = None
 
 
 class JupyterResponse(BaseModel):
     """Jupyter instance response model"""
     id: str
     name: str
-    image: str
     status: str
+    password: Optional[str] = None
     resources: Optional[ResourceConfig] = None
     url: Optional[str] = None
     created_at: Optional[datetime] = None
