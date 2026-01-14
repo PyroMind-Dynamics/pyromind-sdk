@@ -109,7 +109,7 @@ def get_jupyter_example(jupyter_id: str):
 
 
 def update_jupyter_example(jupyter_id: str):
-    """Example: Update a Jupyter instance"""
+    """Example: Update a Jupyter instance with GPU enabled"""
     # API key is read from PYROMIND_API_KEY environment variable
     client = PyroMindAPIClient()
     
@@ -120,18 +120,25 @@ def update_jupyter_example(jupyter_id: str):
             request=JupyterRequest(
                 name="updated-jupyter",
                 resources=ResourceConfig(
-                    cpu="4",
-                    memory="8Gi",
-                    gpu=0
+                    cpu=4,      # CPU as int 4 (int format)
+                    memory=32,  # Memory as 32Gi (int)
+                    gpu=1         # GPU count: 1
                 )
             )
         )
         print(f"✓ Jupyter instance updated successfully!")
         print(f"  New Name: {updated.name}")
+        if updated.resources:
+            print(f"  Resources:")
+            print(f"    CPU: {updated.resources.cpu}")
+            print(f"    Memory: {updated.resources.memory}")
+            print(f"    GPU: {updated.resources.gpu}")
         return updated
         
     except PyroMindAPIError as e:
         print(f"✗ Failed to update Jupyter instance: {e.message}")
+        if e.response:
+            print(f"  Full error response: {e.response}")
         return None
     finally:
         client.close()
@@ -299,20 +306,15 @@ def main():
     print("Jupyter Instance Management Examples")
     print("=" * 60)
     
-    # List existing instances
-    instances = list_jupyter_example()
+    # test List existing instances
+    list_jupyter_example()
     
     # If we have instances, use the first one; otherwise create a new one
-    if instances:
-        print(f"\nUsing existing Jupyter instance: {instances[0].id}")
-        jupyter_id = instances[0].id
-    else:
-        print("\nNo existing Jupyter instances found. Creating a new one...")
-        jupyter_id = create_jupyter_example()
-        
-        if not jupyter_id:
-            print("✗ Failed to create Jupyter instance. Exiting.")
-            return
+    jupyter_id = create_jupyter_example()
+    
+    if not jupyter_id:
+        print("✗ Failed to create Jupyter instance. Exiting.")
+        return
     
     print(f"\n{'=' * 60}")
     print(f"Starting complete workflow for instance: {jupyter_id}")
@@ -335,6 +337,17 @@ def main():
             print("⚠ URL check failed, but continuing with workflow...")
     else:
         print("⚠ No URL available for this instance.")
+    
+    # Step 2.5: Update the instance (edit example with GPU enabled)
+    print("\n[Step 2.5] Updating the instance (edit example)...")
+    updated_instance = update_jupyter_example(jupyter_id)
+    
+    if not updated_instance:
+        print("⚠ Failed to update instance, but continuing with workflow...")
+    else:
+        # Wait a bit for the update to take effect
+        print("  Waiting for update to take effect...")
+        time.sleep(2)
     
     # Step 3: Pause the instance
     print("\n[Step 3] Pausing the instance...")
