@@ -4,11 +4,15 @@ Basic PyroMind API Client Usage Example
 
 This example demonstrates basic usage of the PyroMind API Client SDK.
 
-The API key can be provided via:
-1. PYROMIND_API_KEY environment variable (recommended)
-2. api_key parameter when initializing the client
+The API key and base URL can be provided via:
+1. Environment variables (recommended):
+   - PYROMIND_API_KEY: API key (required)
+   - PYROMIND_BASE_URL: Base URL (optional, defaults to https://pyromind.ai/api/v1)
+2. Parameters when initializing the client:
+   - api_key: API key (required if PYROMIND_API_KEY not set)
+   - base_url: Base URL (optional, will use PYROMIND_BASE_URL env var or default)
 
-If neither is provided, the client will raise a ValueError.
+If API key is not provided via parameter or environment variable, the client will raise a ValueError.
 """
 
 import os

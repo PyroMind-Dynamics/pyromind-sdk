@@ -32,7 +32,9 @@ class PyroMindClient:
         api_key: Bearer token for API authentication. If not provided, will try to
                 read from PYROMIND_API_KEY environment variable. If neither is
                 provided, will raise ValueError.
-        base_url: Base URL for the API (default: https://pyromind.ai/api/v1)
+        base_url: Base URL for the API. If not provided, will try to read from
+                 PYROMIND_BASE_URL environment variable. If neither is provided,
+                 defaults to https://pyromind.ai/api/v1
         timeout: Request timeout in seconds (default: 30)
         max_retries: Maximum number of retries for failed requests (default: 3)
     
@@ -44,7 +46,7 @@ class PyroMindClient:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        base_url: str = "https://pyromind.ai/api/v1",
+        base_url: Optional[str] = None,
         timeout: int = 30,
         max_retries: int = 3
     ):
@@ -61,6 +63,15 @@ class PyroMindClient:
         # Strip whitespace from API key
         api_key = api_key.strip()
         
+        # Get base URL from parameter, environment variable, or use default
+        if base_url is None:
+            base_url = os.getenv("PYROMIND_BASE_URL", "https://pyromind.ai/api/v1")
+        
+        if not base_url:
+            raise ValueError(
+                "Base URL is required. Please provide it either as a parameter "
+                "or set the PYROMIND_BASE_URL environment variable."
+            )
         self.api_key = api_key
         self.base_url = base_url.rstrip('/')
         self.timeout = timeout

@@ -103,9 +103,6 @@ class InstanceClient(PyroMindClient):
         """
         # Convert request to dict and ensure gpu is string if present
         request_dict = request.model_dump(exclude_none=True)
-        if "resources" in request_dict and request_dict["resources"]:
-            if "gpu" in request_dict["resources"] and isinstance(request_dict["resources"]["gpu"], int):
-                request_dict["resources"]["gpu"] = str(request_dict["resources"]["gpu"])
         
         response = self.post("/instance", json_data=request_dict)
         # API returns {success: True, data: {...}} format
@@ -162,9 +159,6 @@ class InstanceClient(PyroMindClient):
         """
         # Convert request to dict and ensure gpu is string if present
         request_dict = request.model_dump(exclude_none=True)
-        if "resources" in request_dict and request_dict["resources"]:
-            if "gpu" in request_dict["resources"] and isinstance(request_dict["resources"]["gpu"], int):
-                request_dict["resources"]["gpu"] = str(request_dict["resources"]["gpu"])
         
         response = self.put(f"/instance/{jupyter_id}", json_data=request_dict)
         # API returns {success: True, data: {...}} format
