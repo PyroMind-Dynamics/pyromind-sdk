@@ -7,7 +7,7 @@ This module defines Pydantic models for request and response data structures.
 from typing import Optional, List, Dict, Any, Literal, Union
 from datetime import datetime
 from enum import Enum
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # Common Models
@@ -26,6 +26,54 @@ class ResourceConfig(BaseModel):
     memory: Optional[str] = None
     gpu: Optional[int] = None
     gpu_type: Optional[str] = None
+
+    @field_validator('cpu', mode='before')
+    @classmethod
+    def validate_cpu(cls, v: Optional[Union[int, str]]) -> Optional[str]:
+        """Validate and convert cpu field, accept integer or string, convert to string"""
+        if v is None:
+            return None
+        # If integer, convert to string
+        if isinstance(v, int):
+            return str(v)
+        # If string, return as is
+        if isinstance(v, str):
+            return v.strip() if v.strip() else None
+        # Other types raise error
+        raise ValueError(f"cpu must be an integer or string, got {type(v).__name__}")
+
+    @field_validator('memory', mode='before')
+    @classmethod
+    def validate_memory(cls, v: Optional[Union[int, str]]) -> Optional[str]:
+        """Validate and convert memory field, accept integer or string, convert to string with 'Gi' unit"""
+        if v is None:
+            return None
+        # If integer, add 'Gi' unit
+        if isinstance(v, int):
+            return f"{v}Gi"
+        # If string, return as is
+        if isinstance(v, str):
+            return v.strip() if v.strip() else None
+        # Other types raise error
+        raise ValueError(f"memory must be an integer or string, got {type(v).__name__}")
+
+    @field_validator('gpu', mode='before')
+    @classmethod
+    def validate_gpu(cls, v: Optional[Union[int, str]]) -> Optional[int]:
+        """Validate and convert gpu field, accept integer or string, keep as integer"""
+        if v is None:
+            return None
+        # If string, convert to integer
+        if isinstance(v, str):
+            try:
+                return int(v.strip())
+            except ValueError:
+                raise ValueError(f"gpu must be a valid integer, got '{v}'")
+        # If integer, return as is
+        if isinstance(v, int):
+            return v
+        # Other types raise error
+        raise ValueError(f"gpu must be an integer or string, got {type(v).__name__}")
 
 
 # Sandbox Models

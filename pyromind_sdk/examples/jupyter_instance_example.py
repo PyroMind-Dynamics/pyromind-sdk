@@ -273,16 +273,20 @@ def wait_for_status(
         client.close()
 
 
-def check_url(url: str, timeout: int = 10) -> bool:
+def check_url(url: str, timeout: int = 10, raise_on_error: bool = False) -> bool:
     """
     Check if a URL is accessible (not returning errors)
     
     Args:
         url: URL to check
         timeout: Request timeout in seconds (default: 10)
+        raise_on_error: If True, raise exception on failure instead of returning False
     
     Returns:
-        True if URL is accessible (status code < 400), False otherwise
+        True if URL is accessible (status code < 400), False otherwise (unless raise_on_error=True)
+    
+    Raises:
+        RuntimeError: If raise_on_error=True and URL check fails
     """
     try:
         print(f"Checking URL accessibility: {url}...")
@@ -292,11 +296,17 @@ def check_url(url: str, timeout: int = 10) -> bool:
             print(f"✓ URL is accessible (status code: {response.status_code})")
             return True
         else:
-            print(f"✗ URL returned error status code: {response.status_code}")
+            error_msg = f"URL returned error status code: {response.status_code}"
+            print(f"✗ {error_msg}")
+            if raise_on_error:
+                raise RuntimeError(f"URL check failed: {error_msg}")
             return False
             
     except requests.exceptions.RequestException as e:
-        print(f"✗ URL check failed: {str(e)}")
+        error_msg = f"URL check failed: {str(e)}"
+        print(f"✗ {error_msg}")
+        if raise_on_error:
+            raise RuntimeError(error_msg) from e
         return False
 
 
@@ -331,12 +341,21 @@ def main():
     print("\n[Step 2] Getting instance details and checking URL...")
     instance = get_jupyter_example(jupyter_id)
     
-    if instance and instance.url:
-        url_accessible = check_url(instance.url)
-        if not url_accessible:
-            print("⚠ URL check failed, but continuing with workflow...")
-    else:
-        print("⚠ No URL available for this instance.")
+    if not instance:
+        raise RuntimeError("Failed to get instance details")
+    
+    # Verify instance is in running status before checking URL
+    if instance.status.lower() != "running":
+        raise RuntimeError(f"Instance is not in 'running' status (current: {instance.status}). Cannot verify URL accessibility.")
+    
+    if not instance.url:
+        raise RuntimeError("Instance is in 'running' status but URL is not available")
+    
+    # In running status, URL check must succeed
+    print(f"Instance is in 'running' status, verifying URL accessibility is required...")
+    print(f"we need to sleep 10 seconds for the instance to be ready")
+    time.sleep(10)
+    check_url(instance.url, raise_on_error=True)
     
     # Step 2.5: Update the instance (edit example with GPU enabled)
     print("\n[Step 2.5] Updating the instance (edit example)...")
@@ -347,7 +366,7 @@ def main():
     else:
         # Wait a bit for the update to take effect
         print("  Waiting for update to take effect...")
-        time.sleep(2)
+        time.sleep(10)
     
     # Step 3: Pause the instance
     print("\n[Step 3] Pausing the instance...")
@@ -373,7 +392,7 @@ def main():
     # After pause, the database status is set to 'Pending' and needs to be updated
     # to 'Stopped' by a background job before resume can succeed
     print("\n[Step 4c] Waiting for database status to sync (background job may need time)...")
-    time.sleep(1)  # Give background job time to update database status
+    time.sleep(5)  # Give background job time to update database status
     
     # Step 5: Resume the instance (with retry logic)
     print("\n[Step 5] Resuming the instance...")
