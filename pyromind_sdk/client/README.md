@@ -10,21 +10,27 @@ pip install pyromind-sdk
 
 ## Quick Start
 
-### Setting up API Key
+### Setting up API Key and Base URL
 
-The API key can be provided in two ways:
+The API key and base URL can be provided in two ways:
 
-1. **Environment variable (recommended):**
+1. **Environment variables (recommended):**
 ```bash
 export PYROMIND_API_KEY="your-api-key"
+export PYROMIND_BASE_URL="https://pyromind.ai/api/v1"  # Optional, defaults to https://pyromind.ai/api/v1
 ```
 
-2. **As a parameter:**
+2. **As parameters:**
 ```python
-client = PyroMindAPIClient(api_key="your-api-key")
+client = PyroMindAPIClient(
+    api_key="your-api-key",
+    base_url="https://pyromind.ai/api/v1"  # Optional
+)
 ```
 
-**Note:** If neither is provided, the client will raise a `ValueError`.
+**Note:** 
+- API key is required. If neither parameter nor `PYROMIND_API_KEY` environment variable is provided, the client will raise a `ValueError`.
+- Base URL is optional. If not provided, it will try to read from `PYROMIND_BASE_URL` environment variable, or default to `https://pyromind.ai/api/v1`.
 
 ### Basic Usage
 
@@ -300,7 +306,15 @@ sandboxes = sandboxes_client.list()
 
 ### Custom base URL and timeout
 
+You can set a custom base URL either via environment variable or parameter:
+
+```bash
+# Via environment variable
+export PYROMIND_BASE_URL="https://custom-api.example.com/api/v1"
+```
+
 ```python
+# Via parameter
 client = PyroMindAPIClient(
     api_key="your-api-key",
     base_url="https://custom-api.example.com/api/v1",

@@ -360,7 +360,7 @@ def main():
     # After pause, the database status is set to 'Pending' and needs to be updated
     # to 'Stopped' by a background job before resume can succeed
     print("\n[Step 4c] Waiting for database status to sync (background job may need time)...")
-    time.sleep(5)  # Give background job time to update database status
+    time.sleep(1)  # Give background job time to update database status
     
     # Step 5: Resume the instance (with retry logic)
     print("\n[Step 5] Resuming the instance...")

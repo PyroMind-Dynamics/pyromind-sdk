@@ -160,16 +160,34 @@ class PyroMindClient:
                 except:
                     error_data = {"message": response.text}
                 
-                # Provide more detailed error message for 401
-                if response.status_code == 401:
+                # Provide more detailed error messages for specific status codes
+                if response.status_code == 400:
+                    error_message = (
+                        "Bad Request (400). The request was invalid or malformed. "
+                        "This usually means there's an issue with the request parameters, "
+                        "request body format, or missing required fields."
+                    ) + f"\nResponse: {response.text}"
+                elif response.status_code == 401:
                     error_message = (
                         "Authentication failed (401). Please check your API key. "
                         "The API key may be invalid, expired, or incorrectly formatted."
                     )
                     if error_data.get("message"):
                         error_message += f" Server message: {error_data.get('message')}"
+                elif response.status_code == 404:
+                    error_message = "Resource not found (404). The requested resource does not exist."
+                    if error_data.get("message"):
+                        error_message += f" Details: {error_data.get('message')}"
+                elif response.status_code == 422:
+                    error_message = "Unprocessable Entity (422). The request was well-formed but contains semantic errors."
+                    if error_data.get("message"):
+                        error_message += f" Details: {error_data.get('message')}"
+                    if error_data.get("detail"):
+                        error_message += f"\nValidation details: {error_data.get('detail')}"
                 else:
                     error_message = error_data.get("message", f"API request failed with status {response.status_code}")
+                    if error_data.get("detail"):
+                        error_message += f"\nDetails: {error_data.get('detail')}"
                 
                 raise PyroMindAPIError(
                     message=error_message,
