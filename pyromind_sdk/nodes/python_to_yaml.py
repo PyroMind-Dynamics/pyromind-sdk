@@ -322,7 +322,7 @@ def yaml_to_python_code(yaml_path: str, output_path: Optional[str] = None) -> st
         return_names = node_config["return_names"]
         code_lines.append(f'    RETURN_NAMES = {return_names}')
     
-    # 资源限制
+    # Resource limits
     resources = node_config.get("resources", {})
     if resources:
         code_lines.append("")
@@ -335,7 +335,7 @@ def yaml_to_python_code(yaml_path: str, output_path: Optional[str] = None) -> st
         if "gpu_max_count" in resources:
             code_lines.append(f'    GPU_MAX_COUNT = {resources["gpu_max_count"]}')
     
-    # 命令模板
+    # Command template
     if node_config.get("command_template"):
         code_lines.append("")
         code_lines.append("    COMMAND_TEMPLATE = [")
@@ -343,7 +343,7 @@ def yaml_to_python_code(yaml_path: str, output_path: Optional[str] = None) -> st
             code_lines.append(f'        "{cmd}",')
         code_lines.append("    ]")
     
-    # BASE_INPUT_TYPES 方法
+    # BASE_INPUT_TYPES method
     if node_config.get("inputs"):
         code_lines.append("")
         code_lines.append("    @classmethod")

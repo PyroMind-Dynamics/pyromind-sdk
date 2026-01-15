@@ -339,12 +339,12 @@ def execute_command_template(
     }
     
     try:
-        # 准备命令模板
+        # Prepare command template
         command_parts, output_file_paths, input_placeholders, output_placeholders = prepare_command_template(
             command_template, inputs, output_names
         )
         
-        # 在执行时，需要替换所有占位符为实际值
+        # Replace all placeholders with actual values during execution
         actual_command_parts = []
         all_replacements = {}
         if inputs:
@@ -353,45 +353,45 @@ def execute_command_template(
         
         for i, part in enumerate(command_parts):
             if isinstance(part, str):
-                # 检查是否是 bash -c 后面的命令字符串（包含 && 等 shell 操作符）
-                # 如果前一个 part 是 "-c"，说明当前 part 是 bash -c 后面的完整命令字符串
+                # Check if this is a command string after bash -c (contains shell operators like &&)
+                # If the previous part is "-c", then the current part is the complete command string after bash -c
                 is_bash_c_command = (i > 0 and 
                                     isinstance(command_parts[i-1], str) and 
                                     command_parts[i-1] == "-c" and
                                     (" && " in part or " || " in part or " ; " in part))
                 
-                # 检查是否是 Python 节点的特殊参数（--inputs 或 --output-paths）
+                # Check if this is a special parameter for Python nodes (--inputs or --output-paths)
                 if (("--inputs" in part and inputs) or "--output-paths" in part):
                     if is_bash_c_command:
-                        # 对于 bash -c 后面的命令字符串，保持原样，只替换 JSON 中的占位符
-                        # 使用正则表达式匹配被引号包裹的 JSON 字符串
+                        # For command strings after bash -c, keep as is, only replace placeholders in JSON
+                        # Use regex to match JSON strings wrapped in quotes
                         
                         def replace_json_placeholders(match, replacer_func):
-                            """通用的 JSON 占位符替换函数
+                            """Generic JSON placeholder replacement function
                             
                             Args:
-                                match: 正则表达式匹配对象
-                                replacer_func: 用于替换 JSON 字典中占位符的函数，接受字典并返回修改后的字典
+                                match: Regex match object
+                                replacer_func: Function to replace placeholders in JSON dict, accepts dict and returns modified dict
                             
                             Returns:
-                                替换后的带引号的 JSON 字符串，或原字符串（如果解析失败）
+                                Replaced quoted JSON string, or original string if parsing fails
                             """
-                            quote_char = match.group(1)  # 引号字符（' 或 "）
-                            json_str = match.group(2)  # JSON 字符串内容
+                            quote_char = match.group(1)  # Quote character (' or ")
+                            json_str = match.group(2)  # JSON string content
                             
                             try:
                                 json_dict = json.loads(json_str)
-                                # 使用提供的替换函数替换占位符
+                                # Use provided replacement function to replace placeholders
                                 json_dict = replacer_func(json_dict)
                                 new_json = json.dumps(json_dict, ensure_ascii=False)
                                 return f"{quote_char}{new_json}{quote_char}"
                             except json.JSONDecodeError:
-                                return match.group(0)  # 解析失败，返回原字符串
+                                return match.group(0)  # Parsing failed, return original string
                         
-                        # 替换 --output-paths 参数中的占位符
+                        # Replace placeholders in --output-paths parameter
                         if "--output-paths" in part:
                             def replace_output_paths_placeholders(json_dict):
-                                """替换 output_paths JSON 中的占位符"""
+                                """Replace placeholders in output_paths JSON"""
                                 for output_name, output_path in output_file_paths.items():
                                     if output_name in json_dict:
                                         placeholder = f"{{{{{output_name}}}}}"
@@ -399,24 +399,24 @@ def execute_command_template(
                                             json_dict[output_name] = output_path
                                 return json_dict
                             
-                            # 匹配 --output-paths 后面被单引号或双引号包裹的 JSON 字符串
-                            # 先匹配单引号字符串（更简单，因为单引号内不能转义）
+                            # Match JSON strings wrapped in single or double quotes after --output-paths
+                            # First match single-quoted strings (simpler, as single quotes can't escape)
                             part = re.sub(
                                 r'--output-paths\s+(\')([^\']*)\1',
                                 lambda m: f'--output-paths {replace_json_placeholders(m, replace_output_paths_placeholders)}',
                                 part
                             )
-                            # 再匹配双引号字符串（需要处理转义）
+                            # Then match double-quoted strings (need to handle escaping)
                             part = re.sub(
                                 r'--output-paths\s+(")((?:(?:\\.|[^"\\])*))"',
                                 lambda m: f'--output-paths {replace_json_placeholders(m, replace_output_paths_placeholders)}',
                                 part
                             )
                         
-                        # 替换 --inputs 参数中的占位符
+                        # Replace placeholders in --inputs parameter
                         if "--inputs" in part and inputs:
                             def replace_inputs_placeholders(json_dict):
-                                """替换 inputs JSON 中的占位符"""
+                                """Replace placeholders in inputs JSON"""
                                 for key, value in inputs.items():
                                     if key in json_dict:
                                         placeholder = f"{{{{{key}}}}}"
@@ -424,26 +424,26 @@ def execute_command_template(
                                             json_dict[key] = str(value)
                                 return json_dict
                             
-                            # 匹配 --inputs 后面被单引号或双引号包裹的 JSON 字符串
-                            # 先匹配单引号字符串（更简单，因为单引号内不能转义）
+                            # Match JSON strings wrapped in single or double quotes after --inputs
+                            # First match single-quoted strings (simpler, as single quotes can't escape)
                             part = re.sub(
                                 r'--inputs\s+(\')([^\']*)\1',
                                 lambda m: f'--inputs {replace_json_placeholders(m, replace_inputs_placeholders)}',
                                 part
                             )
-                            # 再匹配双引号字符串（需要处理转义）
+                            # Then match double-quoted strings (need to handle escaping)
                             part = re.sub(
                                 r'--inputs\s+(")((?:(?:\\.|[^"\\])*))"',
                                 lambda m: f'--inputs {replace_json_placeholders(m, replace_inputs_placeholders)}',
                                 part
                             )
                         
-                        # 替换其他占位符（非 JSON 中的）
+                        # Replace other placeholders (not in JSON)
                         actual_part = replace_template(part, all_replacements)
                         actual_command_parts.append(actual_part)
                     else:
-                        # 不是 bash -c 命令，使用原来的解析方式
-                        # 解析命令部分，替换特殊参数中的占位符
+                        # Not a bash -c command, use original parsing method
+                        # Parse command parts, replace placeholders in special parameters
                         try:
                             parsed_args = shlex.split(part)
                         except:
@@ -455,57 +455,57 @@ def execute_command_template(
                             arg = parsed_args[j]
                             new_parts.append(arg)
                             
-                            # 处理 --inputs 参数
+                            # Process --inputs parameter
                             if arg == "--inputs" and j + 1 < len(parsed_args) and inputs:
                                 inputs_str = parsed_args[j + 1]
                                 try:
                                     inputs_dict = json.loads(inputs_str)
-                                    # 替换占位符为实际值
+                                    # Replace placeholders with actual values
                                     for key, value in inputs.items():
                                         if key in inputs_dict:
                                             placeholder = f"{{{{{key}}}}}"
                                             if inputs_dict[key] == placeholder:
                                                 inputs_dict[key] = str(value)
-                                    # 重新构建 JSON 字符串
+                                    # Rebuild JSON string
                                     new_inputs_json = json.dumps(inputs_dict, ensure_ascii=False)
                                     new_parts.append(new_inputs_json)
-                                    j += 1  # 跳过原值
+                                    j += 1  # Skip original value
                                 except (json.JSONDecodeError, IndexError):
                                     new_parts.append(parsed_args[j + 1])
                                     j += 1
                             
-                            # 处理 --output-paths 参数
+                            # Process --output-paths parameter
                             elif arg == "--output-paths" and j + 1 < len(parsed_args):
                                 output_paths_str = parsed_args[j + 1]
                                 try:
                                     output_paths_dict = json.loads(output_paths_str)
-                                    # 替换占位符为实际文件路径
+                                    # Replace placeholders with actual file paths
                                     for output_name, output_path in output_file_paths.items():
                                         if output_name in output_paths_dict:
                                             placeholder = f"{{{{{output_name}}}}}"
                                             if output_paths_dict[output_name] == placeholder:
                                                 output_paths_dict[output_name] = output_path
-                                    # 重新构建 JSON 字符串
+                                    # Rebuild JSON string
                                     new_output_paths_json = json.dumps(output_paths_dict, ensure_ascii=False)
                                     new_parts.append(new_output_paths_json)
-                                    j += 1  # 跳过原值
+                                    j += 1  # Skip original value
                                 except (json.JSONDecodeError, IndexError):
                                     new_parts.append(parsed_args[j + 1])
                                     j += 1
                             
                             j += 1
                         
-                        # 重新组合命令部分
+                        # Recombine command parts
                         actual_command_parts.append(" ".join(shlex.quote(str(p)) for p in new_parts))
                 else:
-                    # 普通命令模板：替换所有占位符
+                    # Normal command template: replace all placeholders
                     actual_part = replace_template(part, all_replacements)
                     actual_command_parts.append(actual_part)
             else:
                 actual_command_parts.append(part)
         
         result["command"] = actual_command_parts
-        # 执行命令
+        # Execute command
         process_result = subprocess.run(
             actual_command_parts,
             capture_output=True,
@@ -517,21 +517,21 @@ def execute_command_template(
         result["stdout"] = process_result.stdout
         result["stderr"] = process_result.stderr
         result["success"] = process_result.returncode == 0
-        # 读取输出文件
+        # Read output files
         for output_name, file_path in output_file_paths.items():
-            # 等待一下确保文件写入完成
+            # Wait a bit to ensure file write is complete
             time.sleep(0.1)
             
-            # 检查文件是否存在
+            # Check if file exists
             if not os.path.exists(file_path):
                 result["warnings"].append(f"Output file not found: {file_path}")
                 continue
             
-            # 读取文件内容
+            # Read file content
             content = read_output_file(file_path)
             if content is not None:
                 content = content.rstrip('\n\r')
-                # 允许空输出（空字符串也是有效的输出值）
+                # Allow empty output (empty string is also a valid output value)
                 result["outputs"][output_name] = content
             else:
                 if os.path.exists(file_path):
@@ -544,7 +544,7 @@ def execute_command_template(
                     result["errors"].append(error_msg)
                     result["success"] = False
             
-            # 清理临时文件
+            # Clean up temporary files
             try:
                 if os.path.exists(file_path):
                     os.unlink(file_path)

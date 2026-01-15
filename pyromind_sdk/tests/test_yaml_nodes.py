@@ -59,34 +59,34 @@ def test_yaml_file(yaml_path: str, verbose: bool = False, execute: bool = False,
         results = {"success": True, "file": str(yaml_path), "nodes": []}
         
         for node_name, node_class in nodes.items():
-            # 验证节点类
+            # Validate node class
             validation = validate_node_class(node_class, node_name)
             
-            # 执行命令模板
+            # Execute command template
             execution_result = None
             if execute and validation["valid"] and hasattr(node_class, "COMMAND_TEMPLATE"):
                 command_template = node_class.COMMAND_TEMPLATE
                 if command_template:
-                    # 获取输入类型和默认值
+                    # Get input types and default values
                     input_types = {}
                     if hasattr(node_class, "BASE_INPUT_TYPES"):
                         input_types = node_class.BASE_INPUT_TYPES()
                     
-                    # 如果没有提供输入，使用默认值
+                    # Use default values if inputs not provided
                     if inputs is None:
                         inputs = get_default_inputs(input_types)
                     
-                    # 获取输出名称
+                    # Get output names
                     return_names = list(getattr(node_class, "RETURN_NAMES", ()))
                     
-                    # 执行命令模板
+                    # Execute command template
                     execution_result = execute_command_template(
                         command_template,
                         inputs=inputs,
                         output_names=return_names if return_names else None
                     )
             
-            # 如果 verbose，打印详细信息（包括执行结果）
+            # Print detailed information if verbose (including execution results)
             if verbose:
                 print_node_info(node_name, node_class, validation, execution_result)
             
@@ -119,30 +119,30 @@ def test_directory(directory: str, verbose: bool = False, execute: bool = False)
         for node_name, node_class in all_nodes.items():
             validation = validate_node_class(node_class, node_name)
             
-            # 执行命令模板
+            # Execute command template
             execution_result = None
             if execute and validation["valid"] and hasattr(node_class, "COMMAND_TEMPLATE"):
                 command_template = node_class.COMMAND_TEMPLATE
                 if command_template:
-                    # 获取输入类型和默认值
+                    # Get input types and default values
                     input_types = {}
                     if hasattr(node_class, "BASE_INPUT_TYPES"):
                         input_types = node_class.BASE_INPUT_TYPES()
                     
-                    # 使用默认值
+                    # Use default values
                     inputs = get_default_inputs(input_types)
                     
-                    # 获取输出名称
+                    # Get output names
                     return_names = list(getattr(node_class, "RETURN_NAMES", ()))
                     
-                    # 执行命令模板
+                    # Execute command template
                     execution_result = execute_command_template(
                         command_template,
                         inputs=inputs,
                         output_names=return_names if return_names else None
                     )
             
-            # 如果 verbose，打印详细信息（包括执行结果）
+            # Print detailed information if verbose (including execution results)
             if verbose:
                 print_node_info(node_name, node_class, validation, execution_result)
             
@@ -164,7 +164,7 @@ def print_summary(results: Dict[str, Any], verbose: bool = False, execute: bool 
     total = len(results["nodes"])
     valid = sum(1 for n in results["nodes"] if n.get("validation", {}).get("valid", False))
     
-    # 统计执行结果
+    # Count execution results
     if execute:
         executed = sum(1 for n in results["nodes"] if n.get("execution") is not None)
         execution_success = 0
@@ -196,28 +196,28 @@ def print_summary(results: Dict[str, Any], verbose: bool = False, execute: bool 
                 for error in validation["errors"][:3]:
                     print(f"    ✗ {error}")
             
-            # 执行信息
+            # Execution information
             execution = node_result.get("execution")
             validation = node_result.get("validation", {})
             
-            # 获取命令模板用于显示
+            # Get command template for display
             cmd_template = None
             if "info" in validation and "command_template" in validation["info"]:
                 cmd_template = validation["info"]["command_template"]
             
-            # 显示输入输出数量
+            # Display input/output counts
             input_types = validation.get("info", {}).get("input_types", {})
             inputs_count = len(input_types.get("required", [])) + len(input_types.get("optional", []))
             outputs_info = validation.get("info", {}).get("outputs", {})
             outputs_count = len(outputs_info) if outputs_info else (len(execution.get("outputs", {})) if execution else 0)
             print(f"    Inputs: {inputs_count} | Outputs: {outputs_count}")
             
-            # 显示命令模板（保持占位符形式）
+            # Display command template (keep placeholder form)
             if cmd_template:
                 cmd_str = ' '.join(str(part) for part in cmd_template) if isinstance(cmd_template, list) else str(cmd_template)
                 print(f"    Command: {cmd_str}")
             
-            # 输出内容
+            # Output content
             if execute and execution and execution.get("outputs"):
                 print(f"    Outputs:")
                 for output_name, output_value in execution["outputs"].items():
@@ -226,10 +226,10 @@ def print_summary(results: Dict[str, Any], verbose: bool = False, execute: bool 
                         value_preview = value_preview[:100] + "..."
                     print(f"      {output_name}: {value_preview}")
             
-            # 执行结果
+            # Execution results
             if execute and execution:
                 returncode = execution.get('returncode', 'N/A')
-                # 检查是否有错误（包括空输出文件）
+                # Check if there are errors (including empty output files)
                 has_errors = execution.get('errors') and len(execution.get('errors', [])) > 0
                 execution_success = returncode == 0 and not has_errors
                 status = "✓" if execution_success else "✗"
@@ -239,7 +239,7 @@ def print_summary(results: Dict[str, Any], verbose: bool = False, execute: bool 
                     if len(execution["stderr"].strip()) > 200:
                         stderr_preview += "..."
                     print(f"      Error: {stderr_preview}")
-                # 显示执行错误（包括空输出文件等）
+                # Display execution errors (including empty output files, etc.)
                 if has_errors:
                     print(f"      Execution Errors:")
                     for error in execution.get('errors', [])[:3]:
@@ -280,7 +280,7 @@ Examples:
     
     args = parser.parse_args()
     
-    # 默认路径
+    # Default path
     if not args.yaml_path:
         script_dir = Path(__file__).parent.parent
         default_dir = script_dir / "examples" / "nodes"
@@ -290,7 +290,7 @@ Examples:
         else:
             parser.error("No YAML path provided and default directory not found")
     
-    # 解析输入参数
+    # Parse input parameters
     inputs = None
     if args.inputs:
         try:
@@ -299,13 +299,13 @@ Examples:
             print(f"Error parsing inputs JSON: {e}", file=sys.stderr)
             sys.exit(1)
     
-    # 执行测试
+    # Execute tests
     if args.directory or Path(args.yaml_path).is_dir():
         results = test_directory(args.yaml_path, verbose=args.verbose, execute=args.execute)
     else:
         results = test_yaml_file(args.yaml_path, verbose=args.verbose, execute=args.execute, inputs=inputs)
     
-    # 输出结果
+    # Output results
     if args.json:
         print(json.dumps(results, indent=2, default=str))
     else:
@@ -314,7 +314,7 @@ Examples:
             sys.exit(1)
         print_summary(results, verbose=args.verbose, execute=args.execute)
         
-        # 检查是否有执行错误（包括空输出文件）
+        # Check if there are execution errors (including empty output files)
         if args.execute:
             has_execution_errors = False
             for node_result in results.get("nodes", []):

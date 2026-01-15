@@ -1,10 +1,10 @@
 """
-Python 函数调用包装器
+Python function call wrapper
 
-在 Pod 中执行时，这个模块会被调用，负责：
-1. 处理输入和输出
-2. 加载 YAML 指定的 Python 文件
-3. 调用指定的 Python 函数
+When executing in Pod, this module is called and is responsible for:
+1. Processing inputs and outputs
+2. Loading Python files specified in YAML
+3. Calling the specified Python function
 """
 
 import sys
@@ -15,11 +15,11 @@ import argparse
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
-# 导入类型转换函数，避免代码重复
+# Import type conversion functions to avoid code duplication
 try:
     from .type_converter import convert_string_to_python_type, convert_inputs, validate_output_type
 except ImportError:
-    # 如果相对导入失败，尝试绝对导入
+    # If relative import fails, try absolute import
     from pyromind_sdk.nodes.type_converter import convert_string_to_python_type, convert_inputs, validate_output_type
 
 
@@ -120,7 +120,7 @@ def function_call_wrapper(
     # 5. Validate and process output results (supports multiple outputs)
     # If result is a dictionary and keys match output_paths, write separately
     if isinstance(result, dict):
-        # 构建输出类型映射
+        # Build output type mapping
         output_type_map = {}
         if return_types and return_names:
             for i, name in enumerate(return_names):
@@ -131,7 +131,7 @@ def function_call_wrapper(
             if output_name in result:
                 output_value = result[output_name]
                 
-                # 验证输出类型
+                # Validate output type
                 if output_name in output_type_map:
                     expected_type = output_type_map[output_name]
                     if not validate_output_type(output_value, expected_type):
@@ -141,7 +141,7 @@ def function_call_wrapper(
                             f"Value: {repr(output_value)}"
                         )
                 
-                # 转换为字符串
+                # Convert to string
                 if isinstance(output_value, str):
                     output_json = output_value
                 elif isinstance(output_value, (dict, list)):
@@ -149,7 +149,7 @@ def function_call_wrapper(
                 else:
                     output_json = str(output_value)
                 
-                # 写入输出文件
+                # Write to output file
                 output_file = Path(output_path)
                 output_file.parent.mkdir(parents=True, exist_ok=True)
                 with open(output_file, 'w', encoding='utf-8') as f:
@@ -157,12 +157,12 @@ def function_call_wrapper(
             else:
                 raise KeyError(f"Output '{output_name}' not found in function result. Available keys: {list(result.keys())}")
     else:
-        # 单输出情况：如果只有一个输出路径，写入该文件
+        # Single output case: if there's only one output path, write to that file
         if len(output_paths) == 1:
             output_name = list(output_paths.keys())[0]
             output_path = list(output_paths.values())[0]
             
-            # 验证输出类型
+            # Validate output type
             if return_types and return_names and len(return_types) > 0 and len(return_names) > 0:
                 if output_name in return_names:
                     idx = return_names.index(output_name)
