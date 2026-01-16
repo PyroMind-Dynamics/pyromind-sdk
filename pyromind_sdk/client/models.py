@@ -295,7 +295,7 @@ class TrainingFramework(str, Enum):
     slime = "slime"
 
 
-class TrainingJobCreateRequest(BaseModel):
+class TrainingTaskCreateRequest(BaseModel):
     """Request model for creating a training task"""
     name: str
     framework: TrainingFramework
@@ -308,7 +308,7 @@ class TrainingJobCreateRequest(BaseModel):
     output_config: Optional[Dict[str, str]] = None  # Where to store results/models
 
 
-class TrainingJobResponse(BaseModel):
+class TrainingTaskResponse(BaseModel):
     """Training task response model"""
     task_id: str
     name: str
@@ -322,11 +322,11 @@ class TrainingJobResponse(BaseModel):
     error_message: Optional[str] = None
 
 
-class TrainingJobListAPIResponse(BaseModel):
+class TrainingTaskListAPIResponse(BaseModel):
     """List training jobs API response"""
-    jobs: List[TrainingJobResponse]
+    jobs: List[TrainingTaskResponse]
 
 
-class TrainingJobAPIResponse(BaseModel):
+class TrainingTaskAPIResponse(BaseModel):
     """Single training job API response"""
-    job: TrainingJobResponse
+    job: TrainingTaskResponse

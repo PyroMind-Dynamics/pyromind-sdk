@@ -13,7 +13,7 @@ If neither is provided, the client will raise a ValueError.
 
 from pyromind_sdk import PyroMindAPIClient, PyroMindAPIError
 from pyromind_sdk.client.models import (
-    TrainingJobCreateRequest,
+    TrainingTaskCreateRequest,
     TrainingFramework,
     ResourceConfig,
 )
@@ -27,7 +27,7 @@ def create_training_job_example():
     try:
         print("Creating a new training task...")
         job = client.training.create(
-            TrainingJobCreateRequest(
+            TrainingTaskCreateRequest(
                 name="example-training",
                 framework=TrainingFramework.verl,
                 environment_config={

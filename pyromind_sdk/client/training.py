@@ -7,9 +7,9 @@ This module provides a client for managing training tasks via the PyroMind API.
 from typing import List
 from .base import PyroMindClient
 from .models import (
-    TrainingJobCreateRequest,
-    TrainingJobResponse,
-    TrainingJobListAPIResponse,
+    TrainingTaskCreateRequest,
+    TrainingTaskResponse,
+    TrainingTaskListAPIResponse,
 )
 
 
@@ -21,12 +21,12 @@ class TrainingClient(PyroMindClient):
     and stopping training tasks.
     """
     
-    def list(self) -> List[TrainingJobResponse]:
+    def list(self) -> List[TrainingTaskResponse]:
         """
         List all training tasks
         
         Returns:
-            List of TrainingJobResponse objects
+            List of TrainingTaskResponse objects
         """
         response = self.get("/training/tasks")
         # API returns {success: True, data: {...}} format
@@ -37,30 +37,30 @@ class TrainingClient(PyroMindClient):
         elif isinstance(data, list):
             jobs_data = data
         else:
-            api_response = TrainingJobListAPIResponse(**data)
+            api_response = TrainingTaskListAPIResponse(**data)
             return api_response.jobs
         
-        api_response = TrainingJobListAPIResponse(jobs=jobs_data if isinstance(jobs_data, list) else [])
+        api_response = TrainingTaskListAPIResponse(jobs=jobs_data if isinstance(jobs_data, list) else [])
         return api_response.jobs
     
-    def create(self, request: TrainingJobCreateRequest) -> TrainingJobResponse:
+    def create(self, request: TrainingTaskCreateRequest) -> TrainingTaskResponse:
         """
         Create a new training task
         
         Args:
-            request: TrainingJobCreateRequest with task configuration
+            request: TrainingTaskCreateRequest with task configuration
             
         Returns:
-            TrainingJobResponse object
+            TrainingTaskResponse object
         """
         response = self.post("/training/tasks", json_data=request.model_dump())
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         
         # Backend returns the job data directly in the data field
-        return TrainingJobResponse(**data)
+        return TrainingTaskResponse(**data)
     
-    def get_job(self, job_id: str) -> TrainingJobResponse:
+    def get_job(self, job_id: str) -> TrainingTaskResponse:
         """
         Get a specific training task by ID
         
@@ -68,14 +68,14 @@ class TrainingClient(PyroMindClient):
             job_id: ID of the training task to retrieve (can be int or str)
             
         Returns:
-            TrainingJobResponse object
+            TrainingTaskResponse object
         """
         response = self.get(f"/training/tasks/{job_id}")
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         
         # Backend returns the job data directly in the data field
-        return TrainingJobResponse(**data)
+        return TrainingTaskResponse(**data)
     
     def delete(self, job_id: str, force: bool = False) -> None:
         """
@@ -88,7 +88,7 @@ class TrainingClient(PyroMindClient):
         params = {"force": force} if force else {}
         self._request("DELETE", f"/training/tasks/{job_id}", params=params)
     
-    def stop(self, job_id: str) -> TrainingJobResponse:
+    def stop(self, job_id: str) -> TrainingTaskResponse:
         """
         Stop a running or paused training task
         
@@ -96,7 +96,7 @@ class TrainingClient(PyroMindClient):
             job_id: ID of the training task to stop (can be int or str)
             
         Returns:
-            TrainingJobResponse object
+            TrainingTaskResponse object
         """
         response = self.post(f"/training/tasks/{job_id}/stop")
         # API returns {success: True, data: {...}} format
@@ -107,4 +107,4 @@ class TrainingClient(PyroMindClient):
         if isinstance(data, dict) and "task_id" in data:
             return self.get_job(data["task_id"])
         # Fallback: try to construct from available data
-        return TrainingJobResponse(**data)
+        return TrainingTaskResponse(**data)

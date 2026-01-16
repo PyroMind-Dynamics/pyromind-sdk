@@ -23,7 +23,7 @@ from pyromind_sdk.client.models import (
     SandboxType,
     ResourceConfig,
     JupyterRequest,
-    TrainingJobCreateRequest,
+    TrainingTaskCreateRequest,
     TrainingFramework,
     InferenceJobCreateRequest,
 )
@@ -80,7 +80,7 @@ def complete_workflow():
         print("\n[Step 3] Creating training task...")
         try:
             training_job = client.training.create(
-                TrainingJobCreateRequest(
+                TrainingTaskCreateRequest(
                     name="ml-training-task",
                     framework=TrainingFramework.verl,
                     environment_config={

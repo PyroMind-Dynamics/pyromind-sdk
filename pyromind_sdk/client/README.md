@@ -43,7 +43,7 @@ from pyromind_sdk.client.models import (
     SandboxConfiguration,
     SandboxType,
     InferenceJobCreateRequest,
-    TrainingJobCreateRequest,
+    TrainingTaskCreateRequest,
     TrainingFramework,
 )
 
@@ -240,7 +240,7 @@ for job in jobs:
 
 ```python
 job = client.training.create(
-    TrainingJobCreateRequest(
+    TrainingTaskCreateRequest(
         name="my-training",
         framework=TrainingFramework.verl,
         environment_config={
