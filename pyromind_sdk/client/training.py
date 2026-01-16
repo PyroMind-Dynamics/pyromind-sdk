@@ -102,9 +102,9 @@ class TrainingClient(PyroMindClient):
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         
-        # Backend returns job_id and status in the data field
-        # Fetch the full job to return complete information
-        if isinstance(data, dict) and "job_id" in data:
-            return self.get_job(data["job_id"])
+        # Backend returns task_id and status in the data field
+        # Fetch the full task to return complete information
+        if isinstance(data, dict) and "task_id" in data:
+            return self.get_job(data["task_id"])
         # Fallback: try to construct from available data
         return TrainingJobResponse(**data)

@@ -310,21 +310,11 @@ class TrainingJobCreateRequest(BaseModel):
 
 class TrainingJobResponse(BaseModel):
     """Training task response model"""
-    job_id: str
+    task_id: str
     name: str
     status: str  # Using task status from backend
-    framework: Optional[TrainingFramework] = None
-    environment_config: Optional[Dict[str, Any]] = None
-    model_configuration: Optional[Dict[str, Any]] = None
-    training_config: Optional[Dict[str, Any]] = None
-    resources: Optional[ResourceConfig] = None
-    checkpoint_interval: Optional[int] = 300
-    data_source: Optional[Dict[str, Any]] = None
-    output_config: Optional[Dict[str, Any]] = None
-    progress: Optional[float] = None  # 0.0 to 1.0
     metrics: Optional[Dict[str, Any]] = None  # Training metrics
     logs_url: Optional[str] = None  # URL to access training logs
-    model_artifacts_url: Optional[str] = None  # URL to access trained models
     created_at: Optional[Union[str, datetime]] = None
     started_at: Optional[Union[str, datetime]] = None
     completed_at: Optional[Union[str, datetime]] = None

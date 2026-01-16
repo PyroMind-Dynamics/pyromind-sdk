@@ -61,13 +61,12 @@ def create_training_job_example():
             )
         )
         print(f"✓ Training task created successfully!")
-        print(f"  ID: {job.job_id}")
+        print(f"  ID: {job.task_id}")
         print(f"  Name: {job.name}")
         print(f"  Status: {job.status}")
-        print(f"  Framework: {job.framework}")
         if job.logs_url:
             print(f"  Logs URL: {job.logs_url}")
-        return job.job_id
+        return job.task_id
         
     except PyroMindAPIError as e:
         print(f"✗ Failed to create training task: {e.message}")
@@ -88,10 +87,8 @@ def list_training_jobs_example():
         
         for job in jobs:
             print(f"\n  Task: {job.name}")
-            print(f"    ID: {job.job_id}")
+            print(f"    ID: {job.task_id}")
             print(f"    Status: {job.status}")
-            if job.framework:
-                print(f"    Framework: {job.framework}")
             if job.logs_url:
                 print(f"    Logs URL: {job.logs_url}")
         
@@ -115,15 +112,6 @@ def get_training_job_example(job_id: str):
         print(f"✓ Training task details:")
         print(f"  Name: {job.name}")
         print(f"  Status: {job.status}")
-        if job.framework:
-            print(f"  Framework: {job.framework}")
-        if job.resources:
-            print(f"  Resources:")
-            print(f"    CPU: {job.resources.cpu}")
-            print(f"    Memory: {job.resources.memory}")
-            print(f"    GPU: {job.resources.gpu}")
-        if job.training_config:
-            print(f"  Training Config: {job.training_config}")
         if job.logs_url:
             print(f"  Logs URL: {job.logs_url}")
         if job.started_at:
@@ -185,7 +173,7 @@ def main():
     
     # If we have tasks, demonstrate operations
     if jobs:
-        job_id = jobs[0].job_id
+        job_id = jobs[0].task_id
         print(f"\nUsing training task: {job_id}")
         
         # Get task details

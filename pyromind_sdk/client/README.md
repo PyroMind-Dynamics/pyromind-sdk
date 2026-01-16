@@ -268,7 +268,7 @@ job = client.training.create(
         }
     )
 )
-print(f"Created training task: {job.job_id}")
+print(f"Created training task: {job.task_id}")
 ```
 
 ### Get a training task
