@@ -262,14 +262,11 @@ print(f"Job status: {job.status}")
 print(f"Logs URL: {job.logs_url}")
 ```
 
-### Pause/Resume a training job
+### Stop a training job
 
 ```python
-# Pause
-client.training.pause(job_id="job-id")
-
-# Resume
-client.training.resume(job_id="job-id")
+# Stop a running or paused training job
+client.training.stop(job_id="job-id")
 ```
 
 ### Delete a training job

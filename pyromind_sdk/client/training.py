@@ -19,7 +19,7 @@ class TrainingClient(PyroMindClient):
     Client for managing training jobs
     
     Provides methods for creating, listing, getting, deleting,
-    pausing, and resuming training jobs.
+    and stopping training jobs.
     """
     
     def list(self) -> List[TrainingJobResponse]:
@@ -97,39 +97,17 @@ class TrainingClient(PyroMindClient):
         """
         self._request("DELETE", f"/training/jobs/{job_id}")
     
-    def pause(self, job_id: str) -> TrainingJobResponse:
+    def stop(self, job_id: str) -> TrainingJobResponse:
         """
-        Pause a training job
+        Stop a running or paused training job
         
         Args:
-            job_id: ID of the training job to pause
+            job_id: ID of the training job to stop
             
         Returns:
             TrainingJobResponse object
         """
-        response = self.post(f"/training/jobs/{job_id}/pause")
-        # API returns {success: True, data: {...}} format
-        data = self._extract_data(response)
-        
-        if isinstance(data, dict) and "job" in data:
-            job_data = data["job"]
-        else:
-            job_data = data
-        
-        api_response = TrainingJobAPIResponse(job=job_data)
-        return api_response.job
-    
-    def resume(self, job_id: str) -> TrainingJobResponse:
-        """
-        Resume a paused training job
-        
-        Args:
-            job_id: ID of the training job to resume
-            
-        Returns:
-            TrainingJobResponse object
-        """
-        response = self.post(f"/training/jobs/{job_id}/resume")
+        response = self.post(f"/training/jobs/{job_id}/stop")
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         

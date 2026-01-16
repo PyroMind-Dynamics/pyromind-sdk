@@ -132,39 +132,20 @@ def get_training_job_example(job_id: str):
         client.close()
 
 
-def pause_training_job_example(job_id: str):
-    """Example: Pause a training job"""
+def stop_training_job_example(job_id: str):
+    """Example: Stop a training job"""
     # API key is read from PYROMIND_API_KEY environment variable
     client = PyroMindAPIClient()
     
     try:
-        print(f"Pausing training job {job_id}...")
-        job = client.training.pause(job_id)
-        print(f"✓ Training job paused!")
+        print(f"Stopping training job {job_id}...")
+        job = client.training.stop(job_id)
+        print(f"✓ Training job stopped!")
         print(f"  Status: {job.status}")
         return job
         
     except PyroMindAPIError as e:
-        print(f"✗ Failed to pause training job: {e.message}")
-        return None
-    finally:
-        client.close()
-
-
-def resume_training_job_example(job_id: str):
-    """Example: Resume a paused training job"""
-    # API key is read from PYROMIND_API_KEY environment variable
-    client = PyroMindAPIClient()
-    
-    try:
-        print(f"Resuming training job {job_id}...")
-        job = client.training.resume(job_id)
-        print(f"✓ Training job resumed!")
-        print(f"  Status: {job.status}")
-        return job
-        
-    except PyroMindAPIError as e:
-        print(f"✗ Failed to resume training job: {e.message}")
+        print(f"✗ Failed to stop training job: {e.message}")
         return None
     finally:
         client.close()
@@ -204,8 +185,7 @@ def main():
         get_training_job_example(job_id)
         
         # Pause and resume (commented out to avoid disrupting running jobs)
-        # pause_training_job_example(job_id)
-        # resume_training_job_example(job_id)
+        # stop_training_job_example(job_id)
     else:
         print("\nNo existing training jobs found. Creating a new one...")
         job_id = create_training_job_example()
