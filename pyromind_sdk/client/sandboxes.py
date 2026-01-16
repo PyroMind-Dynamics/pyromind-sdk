@@ -9,14 +9,11 @@ from .base import PyroMindClient
 from .models import (
     SandboxCreateRequest,
     SandboxResponse,
-    SandboxListAPIResponse,
-    SandboxAPIResponse,
     ActionRequest,
     ActionResponse,
-    ActionAPIResponse,
     BatchActionRequest,
-    BatchActionAPIResponse,
-    VncAPIResponse,
+    VNCResponse,
+    VNCConnectionInfo,
 )
 
 
@@ -39,16 +36,19 @@ class SandboxesClient(PyroMindClient):
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         
+        # Handle different response formats
         if isinstance(data, dict) and "sandboxes" in data:
             sandboxes_data = data["sandboxes"]
+        elif isinstance(data, dict) and "pagination" in data:
+            # Response format: {sandboxes: [...], pagination: {...}}
+            sandboxes_data = data.get("sandboxes", [])
         elif isinstance(data, list):
             sandboxes_data = data
         else:
-            api_response = SandboxListAPIResponse(**data)
-            return api_response.sandboxes
+            sandboxes_data = []
         
-        api_response = SandboxListAPIResponse(sandboxes=sandboxes_data if isinstance(sandboxes_data, list) else [])
-        return api_response.sandboxes
+        # Convert each sandbox data to SandboxResponse
+        return [SandboxResponse(**sandbox) if isinstance(sandbox, dict) else sandbox for sandbox in sandboxes_data]
     
     def create(self, request: SandboxCreateRequest) -> SandboxResponse:
         """
@@ -64,13 +64,8 @@ class SandboxesClient(PyroMindClient):
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         
-        if isinstance(data, dict) and "sandbox" in data:
-            sandbox_data = data["sandbox"]
-        else:
-            sandbox_data = data
-        
-        api_response = SandboxAPIResponse(sandbox=sandbox_data)
-        return api_response.sandbox
+        # Backend returns the sandbox data directly in the data field
+        return SandboxResponse(**data)
     
     def get_sandbox(self, sandbox_id: str) -> SandboxResponse:
         """
@@ -86,13 +81,8 @@ class SandboxesClient(PyroMindClient):
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         
-        if isinstance(data, dict) and "sandbox" in data:
-            sandbox_data = data["sandbox"]
-        else:
-            sandbox_data = data
-        
-        api_response = SandboxAPIResponse(sandbox=sandbox_data)
-        return api_response.sandbox
+        # Backend returns the sandbox data directly in the data field
+        return SandboxResponse(**data)
     
     def delete(self, sandbox_id: str) -> None:
         """
@@ -121,13 +111,8 @@ class SandboxesClient(PyroMindClient):
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         
-        if isinstance(data, dict) and "action" in data:
-            action_data = data["action"]
-        else:
-            action_data = data
-        
-        api_response = ActionAPIResponse(action=action_data)
-        return api_response.action
+        # Backend returns the action data directly in the data field
+        return ActionResponse(**data)
     
     def execute_batch_actions(self, sandbox_id: str, request: BatchActionRequest) -> List[ActionResponse]:
         """
@@ -147,15 +132,16 @@ class SandboxesClient(PyroMindClient):
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         
-        if isinstance(data, dict) and "actions" in data:
-            actions_data = data["actions"]
+        # Handle batch response format
+        if isinstance(data, dict) and "results" in data:
+            results = data["results"]
         elif isinstance(data, list):
-            actions_data = data
+            results = data
         else:
-            actions_data = []
+            results = []
         
-        api_response = BatchActionAPIResponse(actions=actions_data if isinstance(actions_data, list) else [])
-        return api_response.actions
+        # Convert each result to ActionResponse
+        return [ActionResponse(**result) if isinstance(result, dict) else result for result in results]
     
     def get_vnc(self, sandbox_id: str) -> Dict[str, Any]:
         """
@@ -171,10 +157,6 @@ class SandboxesClient(PyroMindClient):
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         
-        if isinstance(data, dict) and "vnc" in data:
-            vnc_data = data["vnc"]
-        else:
-            vnc_data = data
-        
-        api_response = VncAPIResponse(vnc=vnc_data)
-        return api_response.vnc.connection.model_dump()
+        # Backend returns the VNC data directly in the data field
+        vnc_response = VNCResponse(**data)
+        return vnc_response.connection.model_dump()

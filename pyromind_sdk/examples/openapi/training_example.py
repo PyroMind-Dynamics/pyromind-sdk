@@ -14,8 +14,6 @@ If neither is provided, the client will raise a ValueError.
 from pyromind_sdk import PyroMindAPIClient, PyroMindAPIError
 from pyromind_sdk.client.models import (
     TrainingTaskCreateRequest,
-    TrainingFramework,
-    ResourceConfig,
 )
 
 
@@ -26,38 +24,26 @@ def create_training_task_example():
     
     try:
         print("Creating a new training task...")
+        # Example workflow structure - this should match your actual workflow format
+        workflow = {
+            "nodes": [
+                {
+                    "id": "1",
+                    "type": "Training",
+                    "inputs": {
+                        "learning_rate": 0.001,
+                        "batch_size": 32,
+                        "epochs": 100
+                    }
+                }
+            ],
+            "edges": []
+        }
+        
         task = client.training.create(
             TrainingTaskCreateRequest(
                 name="example-training",
-                framework=TrainingFramework.verl,
-                environment_config={
-                    "env_type": "gym",
-                    "env_name": "CartPole-v1"
-                },
-                model_configuration={
-                    "model_type": "ppo",
-                    "hidden_size": 256
-                },
-                training_config={
-                    "learning_rate": 0.001,
-                    "batch_size": 32,
-                    "epochs": 100,
-                    "optimizer": "adam"
-                },
-                resources=ResourceConfig(
-                    cpu="8",
-                    memory="16Gi",
-                    gpu=2
-                ),
-                checkpoint_interval=300,
-                data_source={
-                    "type": "local",
-                    "path": "/data/training"
-                },
-                output_config={
-                    "type": "local",
-                    "path": "/output/models"
-                }
+                workflow=workflow
             )
         )
         print(f"✓ Training task created successfully!")
@@ -109,11 +95,20 @@ def get_training_task_example(task_id: str):
         print(f"  Name: {task.name}")
         print(f"  Status: {task.status}")
         if task.started_at:
-            print(f"  Started At: {task.started_at.strftime('%Y-%m-%d %H:%M:%S')}")
+            if isinstance(task.started_at, str):
+                print(f"  Started At: {task.started_at}")
+            else:
+                print(f"  Started At: {task.started_at.strftime('%Y-%m-%d %H:%M:%S')}")
         if task.completed_at:
-            print(f"  Completed At: {task.completed_at.strftime('%Y-%m-%d %H:%M:%S')}")
+            if isinstance(task.completed_at, str):
+                print(f"  Completed At: {task.completed_at}")
+            else:
+                print(f"  Completed At: {task.completed_at.strftime('%Y-%m-%d %H:%M:%S')}")
         if task.created_at:
-            print(f"  Created At: {task.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+            if isinstance(task.created_at, str):
+                print(f"  Created At: {task.created_at}")
+            else:
+                print(f"  Created At: {task.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
         
         # Display nodes information
         if task.nodes:
@@ -123,29 +118,40 @@ def get_training_task_example(task_id: str):
                 print(f"      ID: {node.node_id}")
                 print(f"      Name: {node.node_name}")
                 if node.start_at:
-                    print(f"      Started At: {node.start_at.strftime('%Y-%m-%d %H:%M:%S')}")
+                    if isinstance(node.start_at, str):
+                        print(f"      Started At: {node.start_at}")
+                    else:
+                        print(f"      Started At: {node.start_at.strftime('%Y-%m-%d %H:%M:%S')}")
                 if node.end_at:
-                    print(f"      Ended At: {node.end_at.strftime('%Y-%m-%d %H:%M:%S')}")
+                    if isinstance(node.end_at, str):
+                        print(f"      Ended At: {node.end_at}")
+                    else:
+                        print(f"      Ended At: {node.end_at.strftime('%Y-%m-%d %H:%M:%S')}")
                 if node.duration:
                     # Format timedelta as readable string
-                    total_seconds = int(node.duration.total_seconds())
-                    hours = total_seconds // 3600
-                    minutes = (total_seconds % 3600) // 60
-                    seconds = total_seconds % 60
-                    if hours > 0:
-                        duration_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                    if isinstance(node.duration, str):
+                        print(f"      Duration: {node.duration}")
                     else:
-                        duration_str = f"{minutes:02d}:{seconds:02d}"
-                    print(f"      Duration: {duration_str}")
-                if node.cpu_num is not None:
-                    print(f"      CPU: {node.cpu_num:.1f}c")
-                if node.cpu_memory is not None:
-                    print(f"      Memory: {node.cpu_memory:.1f}Gi")
-                if node.gpu_num and node.gpu_num > 0:
-                    gpu_info = f"{node.gpu_num}"
-                    if node.gpu_type:
-                        gpu_info = f"{node.gpu_type}*{node.gpu_num}"
-                    print(f"      GPU: {gpu_info}")
+                        total_seconds = int(node.duration.total_seconds())
+                        hours = total_seconds // 3600
+                        minutes = (total_seconds % 3600) // 60
+                        seconds = total_seconds % 60
+                        if hours > 0:
+                            duration_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                        else:
+                            duration_str = f"{minutes:02d}:{seconds:02d}"
+                        print(f"      Duration: {duration_str}")
+                # Display resource information from resources field
+                if node.resources:
+                    if node.resources.cpu:
+                        print(f"      CPU: {node.resources.cpu}")
+                    if node.resources.memory:
+                        print(f"      Memory: {node.resources.memory}")
+                    if node.resources.gpu:
+                        gpu_info = node.resources.gpu
+                        if node.resources.gpu_card:
+                            gpu_info = f"{node.resources.gpu_card}*{node.resources.gpu}"
+                        print(f"      GPU: {gpu_info}")
                 if node.amount is not None:
                     print(f"      Cost: ${node.amount:.3f}")
                 if node.url:

@@ -9,8 +9,6 @@ from .base import PyroMindClient
 from .models import (
     JupyterRequest,
     JupyterResponse,
-    JupyterListAPIResponse,
-    JupyterAPIResponse,
 )
 
 
@@ -117,8 +115,7 @@ class InstanceClient(PyroMindClient):
         if isinstance(instance_data, dict):
             instance_data = self._convert_instance_data(instance_data)
         
-        api_response = JupyterAPIResponse(instance=instance_data)
-        return api_response.instance
+        return JupyterResponse(**instance_data)
     
     def get_instance(self, jupyter_id: str) -> JupyterResponse:
         """
@@ -143,8 +140,7 @@ class InstanceClient(PyroMindClient):
         if isinstance(instance_data, dict):
             instance_data = self._convert_instance_data(instance_data, jupyter_id)
         
-        api_response = JupyterAPIResponse(instance=instance_data)
-        return api_response.instance
+        return JupyterResponse(**instance_data)
     
     def update(self, jupyter_id: str, request: JupyterRequest) -> JupyterResponse:
         """
@@ -173,8 +169,7 @@ class InstanceClient(PyroMindClient):
         if isinstance(instance_data, dict):
             instance_data = self._convert_instance_data(instance_data, jupyter_id)
         
-        api_response = JupyterAPIResponse(instance=instance_data)
-        return api_response.instance
+        return JupyterResponse(**instance_data)
     
     def delete(self, jupyter_id: str) -> None:
         """
@@ -208,8 +203,7 @@ class InstanceClient(PyroMindClient):
         if isinstance(instance_data, dict):
             instance_data = self._convert_instance_data(instance_data, jupyter_id)
         
-        api_response = JupyterAPIResponse(instance=instance_data)
-        return api_response.instance
+        return JupyterResponse(**instance_data)
     
     def resume(self, jupyter_id: str) -> JupyterResponse:
         """
@@ -234,5 +228,4 @@ class InstanceClient(PyroMindClient):
         if isinstance(instance_data, dict):
             instance_data = self._convert_instance_data(instance_data, jupyter_id)
         
-        api_response = JupyterAPIResponse(instance=instance_data)
-        return api_response.instance
+        return JupyterResponse(**instance_data)

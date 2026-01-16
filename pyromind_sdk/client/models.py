@@ -14,18 +14,16 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 class APIResponse(BaseModel):
     """Base API response model"""
     success: bool
-    message: Optional[str] = None
     data: Optional[Any] = None
-    code: Optional[int] = None
-    version: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class ResourceConfig(BaseModel):
     """Resource configuration model"""
     cpu: Optional[str] = None
     memory: Optional[str] = None
-    gpu: Optional[int] = None
-    gpu_type: Optional[str] = None
+    gpu: Optional[str] = None  # GPU count as string (e.g., "1" for 1 GPU)
+    gpu_card: Optional[str] = None  # GPU card type (e.g., "L40S", "H100")
 
     @field_validator('cpu', mode='before')
     @classmethod
@@ -59,19 +57,16 @@ class ResourceConfig(BaseModel):
 
     @field_validator('gpu', mode='before')
     @classmethod
-    def validate_gpu(cls, v: Optional[Union[int, str]]) -> Optional[int]:
-        """Validate and convert gpu field, accept integer or string, keep as integer"""
+    def validate_gpu(cls, v: Optional[Union[int, str]]) -> Optional[str]:
+        """Validate and convert gpu field, accept integer or string, convert to string"""
         if v is None:
             return None
-        # If string, convert to integer
-        if isinstance(v, str):
-            try:
-                return int(v.strip())
-            except ValueError:
-                raise ValueError(f"gpu must be a valid integer, got '{v}'")
-        # If integer, return as is
+        # If integer, convert to string
         if isinstance(v, int):
-            return v
+            return str(v)
+        # If string, return as is
+        if isinstance(v, str):
+            return v.strip() if v.strip() else None
         # Other types raise error
         raise ValueError(f"gpu must be an integer or string, got {type(v).__name__}")
 
@@ -298,14 +293,7 @@ class TrainingFramework(str, Enum):
 class TrainingTaskCreateRequest(BaseModel):
     """Request model for creating a training task"""
     name: str
-    framework: TrainingFramework
-    environment_config: Dict[str, str]  # Configuration for the RL environment
-    model_configuration: Dict[str, str]  # Configuration for the model
-    training_config: Dict[str, str]  # Configuration for the training process
-    resources: Optional[ResourceConfig] = None
-    checkpoint_interval: Optional[int] = 300  # in seconds
-    data_source: Optional[Dict[str, str]] = None  # Where to get training data from
-    output_config: Optional[Dict[str, str]] = None  # Where to store results/models
+    workflow: Dict[str, Any]  # Workflow JSON structure similar to convert_workflow_to_prompt's workflow field
 
 
 class TrainingTaskNodeInfo(BaseModel):
@@ -313,92 +301,82 @@ class TrainingTaskNodeInfo(BaseModel):
     node_id: int
     task_id: int
     node_name: str
-    start_at: Optional[datetime] = None
-    end_at: Optional[datetime] = None
-    duration: Optional[timedelta] = None  # Duration as timedelta object
-    cpu_num: Optional[float] = None  # CPU number in cores (e.g., 4.0 from "4c")
-    cpu_memory: Optional[float] = None  # Memory in GiB (e.g., 80.0 from "80.0Gi")
-    gpu_type: Optional[str] = None  # GPU device type (e.g., "H100", "A100")
-    gpu_num: Optional[int] = 0  # GPU number, default to 0 if not specified or "-"
+    start_at: Optional[Union[str, datetime]] = None
+    end_at: Optional[Union[str, datetime]] = None
+    duration: Optional[Union[str, timedelta]] = None  # Duration as string or timedelta object
+    resources: Optional[ResourceConfig] = None  # Resource configuration (CPU, memory, GPU)
     amount: Optional[float] = None  # Cost amount in float
     url: Optional[str] = None
     wand_flag: Optional[str] = None
     
     @model_validator(mode='before')
     @classmethod
-    def parse_gpu_fields(cls, data):
-        """Parse GPU fields from gpu_num string format like 'H100*4'"""
-        if isinstance(data, dict) and 'gpu_num' in data:
-            gpu_value = data.get('gpu_num')
-            if isinstance(gpu_value, str) and gpu_value.strip() not in ["-", ""]:
-                # Parse format like "H100*4"
-                if "*" in gpu_value:
-                    parts = gpu_value.split("*")
-                    if len(parts) == 2:
-                        data['gpu_type'] = parts[0].strip()
-                        try:
-                            data['gpu_num'] = int(parts[1].strip())
-                        except (ValueError, IndexError):
-                            data['gpu_num'] = 0
-                    else:
-                        data['gpu_num'] = 0
-                else:
-                    # If it's just a number string, try to parse it
+    def convert_resources(cls, data: Any) -> Any:
+        """Convert cpu_num, cpu_memory, gpu_num fields to ResourceConfig object
+        
+        This validator converts the legacy resource fields (cpu_num, cpu_memory, gpu_num)
+        from the API response to a ResourceConfig object in the resources field.
+        """
+        if not isinstance(data, dict):
+            return data
+        
+        cpu_num = data.get("cpu_num")
+        cpu_memory = data.get("cpu_memory")
+        gpu_num = data.get("gpu_num")
+        
+        # If resources field already exists, use it
+        if "resources" in data and data["resources"] is not None:
+            return data
+        
+        # Parse GPU information: format may be "H100*4" or "4"
+        gpu_count = None
+        gpu_card = None
+        if gpu_num and gpu_num != "-":
+            gpu_str = str(gpu_num).strip()
+            if "*" in gpu_str:
+                parts = gpu_str.split("*")
+                if len(parts) == 2:
+                    gpu_card = parts[0].strip()
                     try:
-                        data['gpu_num'] = int(gpu_value.strip())
-                    except (ValueError, TypeError):
-                        data['gpu_num'] = 0
-            elif gpu_value in [None, "-", ""]:
-                data['gpu_num'] = 0
-        return data
-    
-    @field_validator('cpu_num', mode='before')
-    @classmethod
-    def parse_cpu_num(cls, v):
-        """Parse CPU number from string like '4c' to float"""
-        if v is None:
-            return None
-        if isinstance(v, (int, float)):
-            return float(v)
-        if isinstance(v, str):
-            v = v.strip()
-            if v == "" or v == "-":
-                return None
-            # Remove 'c' suffix if present (e.g., "4c" -> "4")
-            if v.endswith('c'):
-                v = v[:-1].strip()
-            try:
-                return float(v)
-            except (ValueError, TypeError):
-                return None
-        return None
-    
-    @field_validator('cpu_memory', mode='before')
-    @classmethod
-    def parse_cpu_memory(cls, v):
-        """Parse CPU memory from string like '80.0Gi' to float (in GiB)"""
-        if v is None:
-            return None
-        if isinstance(v, (int, float)):
-            return float(v)
-        if isinstance(v, str):
-            v = v.strip()
-            if v == "" or v == "-":
-                return None
-            # Remove common suffixes: Gi, GB, Mi, MB, etc.
-            import re
-            # Match number followed by optional unit
-            match = re.match(r'^([\d.]+)', v)
-            if match:
+                        gpu_count = int(parts[1].strip())
+                    except (ValueError, IndexError):
+                        gpu_count = None
+            else:
                 try:
-                    return float(match.group(1))
+                    gpu_count = int(gpu_str)
                 except (ValueError, TypeError):
-                    return None
-            try:
-                return float(v)
-            except (ValueError, TypeError):
-                return None
-        return None
+                    gpu_count = None
+        
+        # Process CPU: convert from "4c" format to string
+        cpu_str = None
+        if cpu_num and cpu_num != "-":
+            cpu_str = str(cpu_num).replace("c", "") if "c" in str(cpu_num) else str(cpu_num)
+        
+        # Process memory: already in "80Gi" format
+        memory_str = None
+        if cpu_memory and cpu_memory != "-":
+            memory_str = str(cpu_memory)
+        
+        # Create ResourceConfig - always create it, even if all fields are None
+        # This ensures consistent behavior: resources will be an empty ResourceConfig
+        # if no resource information is available, rather than None
+        resources_dict = {}
+        if cpu_str:
+            resources_dict["cpu"] = cpu_str
+        if memory_str:
+            resources_dict["memory"] = memory_str
+        if gpu_count is not None:
+            resources_dict["gpu"] = str(gpu_count)
+        if gpu_card:
+            resources_dict["gpu_card"] = gpu_card
+        
+        # Only set resources if we have at least one valid field
+        # If all fields are None or "-", set resources to None
+        if cpu_str or memory_str or gpu_count is not None:
+            data["resources"] = resources_dict
+        # else: resources remains None (default value)
+        
+        return data
     
     @field_validator('amount', mode='before')
     @classmethod
@@ -520,6 +498,17 @@ class TrainingTaskNodeInfo(BaseModel):
     
 
 
+class TrainingTaskCreateResponse(BaseModel):
+    """Training task create response model"""
+    task_id: str
+    name: str
+    status: str  # Using task status from backend
+    metrics: Optional[Dict[str, Any]] = None  # Training metrics
+    nodes: Optional[List[TrainingTaskNodeInfo]] = None  # List of nodes in this task
+    created_at: Optional[Union[str, datetime]] = None
+    started_at: Optional[Union[str, datetime]] = None
+
+
 class TrainingTaskResponse(BaseModel):
     """Training task response model"""
     task_id: str
@@ -527,10 +516,10 @@ class TrainingTaskResponse(BaseModel):
     status: str  # Using task status from backend
     metrics: Optional[Dict[str, Any]] = None  # Training metrics
     nodes: Optional[List[TrainingTaskNodeInfo]] = None  # List of nodes in this task
-    created_at: Optional[datetime] = None
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    expires_at: Optional[datetime] = None
+    created_at: Optional[Union[str, datetime]] = None
+    started_at: Optional[Union[str, datetime]] = None
+    completed_at: Optional[Union[str, datetime]] = None
+    expires_at: Optional[Union[str, datetime]] = None
     error_message: Optional[str] = None
     
     @field_validator('created_at', 'started_at', 'completed_at', 'expires_at', mode='before')

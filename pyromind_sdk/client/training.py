@@ -8,8 +8,8 @@ from typing import List
 from .base import PyroMindClient
 from .models import (
     TrainingTaskCreateRequest,
+    TrainingTaskCreateResponse,
     TrainingTaskResponse,
-    TrainingTaskListAPIResponse,
 )
 
 
@@ -32,21 +32,21 @@ class TrainingClient(PyroMindClient):
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         
+        # Handle different response formats
         if isinstance(data, dict) and "tasks" in data:
             tasks_data = data["tasks"]
-        elif isinstance(data, dict) and "jobs" in data:
-            # Backward compatibility: support old "jobs" field
-            tasks_data = data["jobs"]
+        elif isinstance(data, dict) and "pagination" in data:
+            # Response format: {tasks: [...], pagination: {...}}
+            tasks_data = data.get("tasks", [])
         elif isinstance(data, list):
             tasks_data = data
         else:
-            api_response = TrainingTaskListAPIResponse(**data)
-            return api_response.tasks
+            tasks_data = []
         
-        api_response = TrainingTaskListAPIResponse(tasks=tasks_data if isinstance(tasks_data, list) else [])
-        return api_response.tasks
+        # Convert each task data to TrainingTaskResponse
+        return [TrainingTaskResponse(**task) if isinstance(task, dict) else task for task in tasks_data]
     
-    def create(self, request: TrainingTaskCreateRequest) -> TrainingTaskResponse:
+    def create(self, request: TrainingTaskCreateRequest) -> TrainingTaskCreateResponse:
         """
         Create a new training task
         
@@ -54,14 +54,14 @@ class TrainingClient(PyroMindClient):
             request: TrainingTaskCreateRequest with task configuration
             
         Returns:
-            TrainingTaskResponse object
+            TrainingTaskCreateResponse object
         """
         response = self.post("/training/tasks", json_data=request.model_dump())
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         
-        # Backend returns the job data directly in the data field
-        return TrainingTaskResponse(**data)
+        # Backend returns the task data directly in the data field
+        return TrainingTaskCreateResponse(**data)
     
     def get_job(self, task_id: str) -> TrainingTaskResponse:
         """

@@ -9,9 +9,6 @@ from .base import PyroMindClient
 from .models import (
     InferenceJobCreateRequest,
     InferenceJobResponse,
-    InferenceJobListAPIResponse,
-    InferenceJobAPIResponse,
-    InferenceJobCreateAPIResponse,
 )
 
 
@@ -34,18 +31,20 @@ class InferenceClient(PyroMindClient):
         data = self._extract_data(response)
         
         # Handle different possible data structures
-        if isinstance(data, dict):
-            # API returns {inference_jobs: [], page: 0, ...} format
-            api_response = InferenceJobListAPIResponse(**data)
-            return api_response.inference_jobs
+        if isinstance(data, dict) and "inference_jobs" in data:
+            jobs_data = data["inference_jobs"]
+        elif isinstance(data, dict) and "pagination" in data:
+            # Response format: {inference_jobs: [...], pagination: {...}}
+            jobs_data = data.get("inference_jobs", [])
         elif isinstance(data, list):
-            # Fallback: if data is directly a list
-            api_response = InferenceJobListAPIResponse(inference_jobs=data)
-            return api_response.inference_jobs
+            jobs_data = data
         else:
-            return []
+            jobs_data = []
+        
+        # Convert each job data to InferenceJobResponse
+        return [InferenceJobResponse(**job) if isinstance(job, dict) else job for job in jobs_data]
     
-    def create(self, request: InferenceJobCreateRequest) -> str:
+    def create(self, request: InferenceJobCreateRequest) -> InferenceJobResponse:
         """
         Create a new inference job
         
@@ -53,20 +52,14 @@ class InferenceClient(PyroMindClient):
             request: InferenceJobCreateRequest with job configuration
             
         Returns:
-            Job ID (str) of the created inference job
+            InferenceJobResponse object
         """
         response = self.post("/inference", json_data=request.model_dump())
-        # API returns {success: True, data: {job_id: "..."}} format
+        # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         
-        if isinstance(data, dict) and "job_id" in data:
-            return data["job_id"]
-        elif isinstance(data, dict):
-            # Try to parse as InferenceJobCreateAPIResponse
-            api_response = InferenceJobCreateAPIResponse(**data)
-            return api_response.job_id
-        else:
-            raise ValueError(f"Unexpected response format: {data}")
+        # Backend returns the job data directly in the data field
+        return InferenceJobResponse(**data)
     
     def get_job(self, job_id: str) -> InferenceJobResponse:
         """
@@ -82,13 +75,8 @@ class InferenceClient(PyroMindClient):
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         
-        if isinstance(data, dict) and "job" in data:
-            job_data = data["job"]
-        else:
-            job_data = data
-        
-        api_response = InferenceJobAPIResponse(job=job_data)
-        return api_response.job
+        # Backend returns the job data directly in the data field
+        return InferenceJobResponse(**data)
     
     def delete(self, job_id: str) -> None:
         """
