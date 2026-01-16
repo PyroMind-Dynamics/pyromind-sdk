@@ -197,5 +197,5 @@ def main():
 
 if __name__ == "__main__":
     tasks = list_training_tasks_example()
-    print(tasks)
+    print(get_training_task_example(tasks[0].task_id))
     # main()
