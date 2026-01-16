@@ -111,10 +111,10 @@ def complete_workflow():
             print(f"✓ Training task created: {training_job.task_id}")
             if training_job.logs_url:
                 print(f"  Logs URL: {training_job.logs_url}")
-            training_job_id = training_job.task_id
+            training_task_id = training_job.task_id
         except PyroMindAPIError as e:
             print(f"✗ Failed to create training task: {e.message}")
-            training_job_id = None
+            training_task_id = None
         
         # Step 4: Create an inference job
         print("\n[Step 4] Creating inference job...")
@@ -165,7 +165,7 @@ def complete_workflow():
         print("=" * 60)
         print(f"Sandbox ID: {sandbox_id}")
         print(f"Jupyter ID: {jupyter_id}")
-        print(f"Training Task ID: {training_job_id}")
+        print(f"Training Task ID: {training_task_id}")
         print(f"Inference Job ID: {inference_job_id}")
         print("\nAll resources have been created and are being monitored.")
         print("You can now use these resources for your ML workflow.")

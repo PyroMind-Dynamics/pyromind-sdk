@@ -308,6 +308,22 @@ class TrainingTaskCreateRequest(BaseModel):
     output_config: Optional[Dict[str, str]] = None  # Where to store results/models
 
 
+class TrainingTaskNodeInfo(BaseModel):
+    """Training task node information"""
+    node_id: int
+    task_id: int
+    node_name: str
+    start_at: Optional[str] = None
+    end_at: Optional[str] = None
+    duration: Optional[str] = None
+    cpu_num: Optional[str] = None
+    cpu_memory: Optional[str] = None
+    gpu_num: Optional[str] = None
+    amount: Optional[float] = None
+    url: Optional[str] = None
+    wand_flag: Optional[str] = None
+
+
 class TrainingTaskResponse(BaseModel):
     """Training task response model"""
     task_id: str
@@ -315,6 +331,7 @@ class TrainingTaskResponse(BaseModel):
     status: str  # Using task status from backend
     metrics: Optional[Dict[str, Any]] = None  # Training metrics
     logs_url: Optional[str] = None  # URL to access training logs
+    nodes: Optional[List[TrainingTaskNodeInfo]] = None  # List of nodes in this task
     created_at: Optional[Union[str, datetime]] = None
     started_at: Optional[Union[str, datetime]] = None
     completed_at: Optional[Union[str, datetime]] = None

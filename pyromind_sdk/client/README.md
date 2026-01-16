@@ -274,7 +274,7 @@ print(f"Created training task: {job.task_id}")
 ### Get a training task
 
 ```python
-job = client.training.get_job(job_id="task-id")
+job = client.training.get_job(task_id="task-id")
 print(f"Task status: {job.status}")
 print(f"Logs URL: {job.logs_url}")
 ```
@@ -283,14 +283,14 @@ print(f"Logs URL: {job.logs_url}")
 
 ```python
 # Stop a running or paused training task
-client.training.stop(job_id="task-id")
+client.training.stop(task_id="task-id")
 ```
 
 ### Delete a training task
 
 ```python
 # Delete a training task (optionally with force=True to force delete running tasks)
-client.training.delete(job_id="task-id", force=False)
+client.training.delete(task_id="task-id", force=False)
 ```
 
 ## Error Handling

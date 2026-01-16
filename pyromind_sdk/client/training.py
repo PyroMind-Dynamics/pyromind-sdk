@@ -60,45 +60,45 @@ class TrainingClient(PyroMindClient):
         # Backend returns the job data directly in the data field
         return TrainingTaskResponse(**data)
     
-    def get_job(self, job_id: str) -> TrainingTaskResponse:
+    def get_job(self, task_id: str) -> TrainingTaskResponse:
         """
         Get a specific training task by ID
         
         Args:
-            job_id: ID of the training task to retrieve (can be int or str)
+            task_id: ID of the training task to retrieve (can be int or str)
             
         Returns:
             TrainingTaskResponse object
         """
-        response = self.get(f"/training/tasks/{job_id}")
+        response = self.get(f"/training/tasks/{task_id}")
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         
         # Backend returns the job data directly in the data field
         return TrainingTaskResponse(**data)
     
-    def delete(self, job_id: str, force: bool = False) -> None:
+    def delete(self, task_id: str, force: bool = False) -> None:
         """
         Delete a training task
         
         Args:
-            job_id: ID of the training task to delete (can be int or str)
+            task_id: ID of the training task to delete (can be int or str)
             force: If True, force delete even if task is running
         """
         params = {"force": force} if force else {}
-        self._request("DELETE", f"/training/tasks/{job_id}", params=params)
+        self._request("DELETE", f"/training/tasks/{task_id}", params=params)
     
-    def stop(self, job_id: str) -> TrainingTaskResponse:
+    def stop(self, task_id: str) -> TrainingTaskResponse:
         """
         Stop a running or paused training task
         
         Args:
-            job_id: ID of the training task to stop (can be int or str)
+            task_id: ID of the training task to stop (can be int or str)
             
         Returns:
             TrainingTaskResponse object
         """
-        response = self.post(f"/training/tasks/{job_id}/stop")
+        response = self.post(f"/training/tasks/{task_id}/stop")
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         
