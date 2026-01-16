@@ -1,7 +1,7 @@
 """
 Training API Client
 
-This module provides a client for managing training jobs via the PyroMind API.
+This module provides a client for managing training tasks via the PyroMind API.
 """
 
 from typing import List
@@ -10,26 +10,25 @@ from .models import (
     TrainingJobCreateRequest,
     TrainingJobResponse,
     TrainingJobListAPIResponse,
-    TrainingJobAPIResponse,
 )
 
 
 class TrainingClient(PyroMindClient):
     """
-    Client for managing training jobs
+    Client for managing training tasks
     
     Provides methods for creating, listing, getting, deleting,
-    and stopping training jobs.
+    and stopping training tasks.
     """
     
     def list(self) -> List[TrainingJobResponse]:
         """
-        List all training jobs
+        List all training tasks
         
         Returns:
             List of TrainingJobResponse objects
         """
-        response = self.get("/training/jobs")
+        response = self.get("/training/tasks")
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         
@@ -46,75 +45,66 @@ class TrainingClient(PyroMindClient):
     
     def create(self, request: TrainingJobCreateRequest) -> TrainingJobResponse:
         """
-        Create a new training job
+        Create a new training task
         
         Args:
-            request: TrainingJobCreateRequest with job configuration
+            request: TrainingJobCreateRequest with task configuration
             
         Returns:
             TrainingJobResponse object
         """
-        response = self.post("/training/jobs", json_data=request.model_dump())
+        response = self.post("/training/tasks", json_data=request.model_dump())
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         
-        if isinstance(data, dict) and "job" in data:
-            job_data = data["job"]
-        else:
-            job_data = data
-        
-        api_response = TrainingJobAPIResponse(job=job_data)
-        return api_response.job
+        # Backend returns the job data directly in the data field
+        return TrainingJobResponse(**data)
     
     def get_job(self, job_id: str) -> TrainingJobResponse:
         """
-        Get a specific training job by ID
+        Get a specific training task by ID
         
         Args:
-            job_id: ID of the training job to retrieve
+            job_id: ID of the training task to retrieve (can be int or str)
             
         Returns:
             TrainingJobResponse object
         """
-        response = self.get(f"/training/jobs/{job_id}")
+        response = self.get(f"/training/tasks/{job_id}")
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         
-        if isinstance(data, dict) and "job" in data:
-            job_data = data["job"]
-        else:
-            job_data = data
-        
-        api_response = TrainingJobAPIResponse(job=job_data)
-        return api_response.job
+        # Backend returns the job data directly in the data field
+        return TrainingJobResponse(**data)
     
-    def delete(self, job_id: str) -> None:
+    def delete(self, job_id: str, force: bool = False) -> None:
         """
-        Delete a training job
+        Delete a training task
         
         Args:
-            job_id: ID of the training job to delete
+            job_id: ID of the training task to delete (can be int or str)
+            force: If True, force delete even if task is running
         """
-        self._request("DELETE", f"/training/jobs/{job_id}")
+        params = {"force": force} if force else {}
+        self._request("DELETE", f"/training/tasks/{job_id}", params=params)
     
     def stop(self, job_id: str) -> TrainingJobResponse:
         """
-        Stop a running or paused training job
+        Stop a running or paused training task
         
         Args:
-            job_id: ID of the training job to stop
+            job_id: ID of the training task to stop (can be int or str)
             
         Returns:
             TrainingJobResponse object
         """
-        response = self.post(f"/training/jobs/{job_id}/stop")
+        response = self.post(f"/training/tasks/{job_id}/stop")
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         
-        if isinstance(data, dict) and "job" in data:
-            job_data = data["job"]
-        else:
-            job_data = data
-        
-        api_response = TrainingJobAPIResponse(job=job_data)
-        return api_response.job
+        # Backend returns job_id and status in the data field
+        # Fetch the full job to return complete information
+        if isinstance(data, dict) and "job_id" in data:
+            return self.get_job(data["job_id"])
+        # Fallback: try to construct from available data
+        return TrainingJobResponse(**data)

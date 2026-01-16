@@ -291,52 +291,45 @@ class InferenceJobCreateAPIResponse(BaseModel):
 # Training Models
 class TrainingFramework(str, Enum):
     """Training framework enumeration"""
-    PYTORCH = "pytorch"
-    TENSORFLOW = "tensorflow"
-    JAX = "jax"
-    HUGGINGFACE = "huggingface"
-
-
-class TrainingJobStatus(str, Enum):
-    """Training job status enumeration"""
-    PENDING = "pending"
-    RUNNING = "running"
-    PAUSED = "paused"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
+    verl = "verl"
+    slime = "slime"
 
 
 class TrainingJobCreateRequest(BaseModel):
-    """Request model for creating a training job"""
+    """Request model for creating a training task"""
     name: str
     framework: TrainingFramework
-    script_path: str
-    image: str
+    environment_config: Dict[str, str]  # Configuration for the RL environment
+    model_configuration: Dict[str, str]  # Configuration for the model
+    training_config: Dict[str, str]  # Configuration for the training process
     resources: Optional[ResourceConfig] = None
-    environment_variables: Optional[Dict[str, str]] = None
-    hyperparameters: Optional[Dict[str, Any]] = None
-    data_path: Optional[str] = None
-    output_path: Optional[str] = None
+    checkpoint_interval: Optional[int] = 300  # in seconds
+    data_source: Optional[Dict[str, str]] = None  # Where to get training data from
+    output_config: Optional[Dict[str, str]] = None  # Where to store results/models
 
 
 class TrainingJobResponse(BaseModel):
-    """Training job response model"""
-    id: str
+    """Training task response model"""
+    job_id: str
     name: str
-    framework: TrainingFramework
-    script_path: str
-    image: str
-    status: TrainingJobStatus
+    status: str  # Using task status from backend
+    framework: Optional[TrainingFramework] = None
+    environment_config: Optional[Dict[str, Any]] = None
+    model_configuration: Optional[Dict[str, Any]] = None
+    training_config: Optional[Dict[str, Any]] = None
     resources: Optional[ResourceConfig] = None
-    hyperparameters: Optional[Dict[str, Any]] = None
-    data_path: Optional[str] = None
-    output_path: Optional[str] = None
-    logs_url: Optional[str] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    checkpoint_interval: Optional[int] = 300
+    data_source: Optional[Dict[str, Any]] = None
+    output_config: Optional[Dict[str, Any]] = None
+    progress: Optional[float] = None  # 0.0 to 1.0
+    metrics: Optional[Dict[str, Any]] = None  # Training metrics
+    logs_url: Optional[str] = None  # URL to access training logs
+    model_artifacts_url: Optional[str] = None  # URL to access trained models
+    created_at: Optional[Union[str, datetime]] = None
+    started_at: Optional[Union[str, datetime]] = None
+    completed_at: Optional[Union[str, datetime]] = None
+    expires_at: Optional[Union[str, datetime]] = None
+    error_message: Optional[str] = None
 
 
 class TrainingJobListAPIResponse(BaseModel):

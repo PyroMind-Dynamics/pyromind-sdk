@@ -76,31 +76,44 @@ def complete_workflow():
             print(f"✗ Failed to create Jupyter instance: {e.message}")
             jupyter_id = None
         
-        # Step 3: Create a training job
-        print("\n[Step 3] Creating training job...")
+        # Step 3: Create a training task
+        print("\n[Step 3] Creating training task...")
         try:
             training_job = client.training.create(
                 TrainingJobCreateRequest(
-                    name="ml-training-job",
-                    framework=TrainingFramework.PYTORCH,
-                    script_path="/scripts/train.py",
-                    image="pytorch/pytorch:latest",
-                    resources=ResourceConfig(cpu="8", memory="16Gi", gpu=2),
-                    hyperparameters={
+                    name="ml-training-task",
+                    framework=TrainingFramework.verl,
+                    environment_config={
+                        "env_type": "gym",
+                        "env_name": "CartPole-v1"
+                    },
+                    model_configuration={
+                        "model_type": "ppo",
+                        "hidden_size": 256
+                    },
+                    training_config={
                         "learning_rate": 0.001,
                         "batch_size": 32,
                         "epochs": 100
                     },
-                    data_path="/data/training",
-                    output_path="/output/models"
+                    resources=ResourceConfig(cpu="8", memory="16Gi", gpu=2),
+                    checkpoint_interval=300,
+                    data_source={
+                        "type": "local",
+                        "path": "/data/training"
+                    },
+                    output_config={
+                        "type": "local",
+                        "path": "/output/models"
+                    }
                 )
             )
-            print(f"✓ Training job created: {training_job.id}")
+            print(f"✓ Training task created: {training_job.job_id}")
             if training_job.logs_url:
                 print(f"  Logs URL: {training_job.logs_url}")
-            training_job_id = training_job.id
+            training_job_id = training_job.job_id
         except PyroMindAPIError as e:
-            print(f"✗ Failed to create training job: {e.message}")
+            print(f"✗ Failed to create training task: {e.message}")
             training_job_id = None
         
         # Step 4: Create an inference job
@@ -152,7 +165,7 @@ def complete_workflow():
         print("=" * 60)
         print(f"Sandbox ID: {sandbox_id}")
         print(f"Jupyter ID: {jupyter_id}")
-        print(f"Training Job ID: {training_job_id}")
+        print(f"Training Task ID: {training_job_id}")
         print(f"Inference Job ID: {inference_job_id}")
         print("\nAll resources have been created and are being monitored.")
         print("You can now use these resources for your ML workflow.")

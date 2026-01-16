@@ -228,51 +228,69 @@ client.inference.delete(job_id="job-id")
 
 ## Training
 
-### List all training jobs
+### List all training tasks
 
 ```python
 jobs = client.training.list()
 for job in jobs:
-    print(f"Job: {job.name} - Status: {job.status}")
+    print(f"Task: {job.name} - Status: {job.status}")
 ```
 
-### Create a training job
+### Create a training task
 
 ```python
 job = client.training.create(
     TrainingJobCreateRequest(
         name="my-training",
-        framework=TrainingFramework.PYTORCH,
-        script_path="/scripts/train.py",
-        image="pytorch/pytorch:latest",
+        framework=TrainingFramework.verl,
+        environment_config={
+            "env_type": "gym",
+            "env_name": "CartPole-v1"
+        },
+        model_configuration={
+            "model_type": "ppo",
+            "hidden_size": 256
+        },
+        training_config={
+            "learning_rate": 0.001,
+            "batch_size": 32,
+            "epochs": 100
+        },
         resources=ResourceConfig(cpu="8", memory="16Gi", gpu=2),
-        hyperparameters={"learning_rate": 0.001, "batch_size": 32},
-        data_path="/data/training",
-        output_path="/output/models"
+        checkpoint_interval=300,
+        data_source={
+            "type": "local",
+            "path": "/data/training"
+        },
+        output_config={
+            "type": "local",
+            "path": "/output/models"
+        }
     )
 )
-print(f"Created training job: {job.id}")
+print(f"Created training task: {job.job_id}")
 ```
 
-### Get a training job
+### Get a training task
 
 ```python
-job = client.training.get_job(job_id="job-id")
-print(f"Job status: {job.status}")
+job = client.training.get_job(job_id="task-id")
+print(f"Task status: {job.status}")
 print(f"Logs URL: {job.logs_url}")
 ```
 
-### Stop a training job
+### Stop a training task
 
 ```python
-# Stop a running or paused training job
-client.training.stop(job_id="job-id")
+# Stop a running or paused training task
+client.training.stop(job_id="task-id")
 ```
 
-### Delete a training job
+### Delete a training task
 
 ```python
-client.training.delete(job_id="job-id")
+# Delete a training task (optionally with force=True to force delete running tasks)
+client.training.delete(job_id="task-id", force=False)
 ```
 
 ## Error Handling
