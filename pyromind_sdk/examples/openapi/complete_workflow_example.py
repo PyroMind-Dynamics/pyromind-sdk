@@ -109,8 +109,6 @@ def complete_workflow():
                 )
             )
             print(f"✓ Training task created: {training_job.task_id}")
-            if training_job.logs_url:
-                print(f"  Logs URL: {training_job.logs_url}")
             training_task_id = training_job.task_id
         except PyroMindAPIError as e:
             print(f"✗ Failed to create training task: {e.message}")

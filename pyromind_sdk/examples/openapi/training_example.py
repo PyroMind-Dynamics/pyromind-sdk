@@ -64,8 +64,6 @@ def create_training_task_example():
         print(f"  ID: {task.task_id}")
         print(f"  Name: {task.name}")
         print(f"  Status: {task.status}")
-        if task.logs_url:
-            print(f"  Logs URL: {task.logs_url}")
         return task.task_id
         
     except PyroMindAPIError as e:
@@ -89,8 +87,6 @@ def list_training_tasks_example():
             print(f"\n  Task: {task.name}")
             print(f"    ID: {task.task_id}")
             print(f"    Status: {task.status}")
-            if task.logs_url:
-                print(f"    Logs URL: {task.logs_url}")
         
         return tasks
         
@@ -112,12 +108,51 @@ def get_training_task_example(task_id: str):
         print(f"✓ Training task details:")
         print(f"  Name: {task.name}")
         print(f"  Status: {task.status}")
-        if task.logs_url:
-            print(f"  Logs URL: {task.logs_url}")
         if task.started_at:
-            print(f"  Started At: {task.started_at}")
+            print(f"  Started At: {task.started_at.strftime('%Y-%m-%d %H:%M:%S')}")
         if task.completed_at:
-            print(f"  Completed At: {task.completed_at}")
+            print(f"  Completed At: {task.completed_at.strftime('%Y-%m-%d %H:%M:%S')}")
+        if task.created_at:
+            print(f"  Created At: {task.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        # Display nodes information
+        if task.nodes:
+            print(f"\n  Nodes ({len(task.nodes)}):")
+            for i, node in enumerate(task.nodes, 1):
+                print(f"    Node {i}:")
+                print(f"      ID: {node.node_id}")
+                print(f"      Name: {node.node_name}")
+                if node.start_at:
+                    print(f"      Started At: {node.start_at.strftime('%Y-%m-%d %H:%M:%S')}")
+                if node.end_at:
+                    print(f"      Ended At: {node.end_at.strftime('%Y-%m-%d %H:%M:%S')}")
+                if node.duration:
+                    # Format timedelta as readable string
+                    total_seconds = int(node.duration.total_seconds())
+                    hours = total_seconds // 3600
+                    minutes = (total_seconds % 3600) // 60
+                    seconds = total_seconds % 60
+                    if hours > 0:
+                        duration_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                    else:
+                        duration_str = f"{minutes:02d}:{seconds:02d}"
+                    print(f"      Duration: {duration_str}")
+                if node.cpu_num is not None:
+                    print(f"      CPU: {node.cpu_num:.1f}c")
+                if node.cpu_memory is not None:
+                    print(f"      Memory: {node.cpu_memory:.1f}Gi")
+                if node.gpu_num and node.gpu_num > 0:
+                    gpu_info = f"{node.gpu_num}"
+                    if node.gpu_type:
+                        gpu_info = f"{node.gpu_type}*{node.gpu_num}"
+                    print(f"      GPU: {gpu_info}")
+                if node.amount is not None:
+                    print(f"      Cost: ${node.amount:.3f}")
+                if node.url:
+                    print(f"      WandB URL: {node.url}")
+        else:
+            print(f"\n  Nodes: None or empty")
+        
         return task
         
     except PyroMindAPIError as e:

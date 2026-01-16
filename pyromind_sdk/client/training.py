@@ -32,16 +32,19 @@ class TrainingClient(PyroMindClient):
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         
-        if isinstance(data, dict) and "jobs" in data:
-            jobs_data = data["jobs"]
+        if isinstance(data, dict) and "tasks" in data:
+            tasks_data = data["tasks"]
+        elif isinstance(data, dict) and "jobs" in data:
+            # Backward compatibility: support old "jobs" field
+            tasks_data = data["jobs"]
         elif isinstance(data, list):
-            jobs_data = data
+            tasks_data = data
         else:
             api_response = TrainingTaskListAPIResponse(**data)
-            return api_response.jobs
+            return api_response.tasks
         
-        api_response = TrainingTaskListAPIResponse(jobs=jobs_data if isinstance(jobs_data, list) else [])
-        return api_response.jobs
+        api_response = TrainingTaskListAPIResponse(tasks=tasks_data if isinstance(tasks_data, list) else [])
+        return api_response.tasks
     
     def create(self, request: TrainingTaskCreateRequest) -> TrainingTaskResponse:
         """

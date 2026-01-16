@@ -276,7 +276,6 @@ print(f"Created training task: {job.task_id}")
 ```python
 job = client.training.get_job(task_id="task-id")
 print(f"Task status: {job.status}")
-print(f"Logs URL: {job.logs_url}")
 ```
 
 ### Stop a training task

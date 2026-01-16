@@ -5,9 +5,9 @@ This module defines Pydantic models for request and response data structures.
 """
 
 from typing import Optional, List, Dict, Any, Literal, Union
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 # Common Models
@@ -313,15 +313,211 @@ class TrainingTaskNodeInfo(BaseModel):
     node_id: int
     task_id: int
     node_name: str
-    start_at: Optional[str] = None
-    end_at: Optional[str] = None
-    duration: Optional[str] = None
-    cpu_num: Optional[str] = None
-    cpu_memory: Optional[str] = None
-    gpu_num: Optional[str] = None
-    amount: Optional[float] = None
+    start_at: Optional[datetime] = None
+    end_at: Optional[datetime] = None
+    duration: Optional[timedelta] = None  # Duration as timedelta object
+    cpu_num: Optional[float] = None  # CPU number in cores (e.g., 4.0 from "4c")
+    cpu_memory: Optional[float] = None  # Memory in GiB (e.g., 80.0 from "80.0Gi")
+    gpu_type: Optional[str] = None  # GPU device type (e.g., "H100", "A100")
+    gpu_num: Optional[int] = 0  # GPU number, default to 0 if not specified or "-"
+    amount: Optional[float] = None  # Cost amount in float
     url: Optional[str] = None
     wand_flag: Optional[str] = None
+    
+    @model_validator(mode='before')
+    @classmethod
+    def parse_gpu_fields(cls, data):
+        """Parse GPU fields from gpu_num string format like 'H100*4'"""
+        if isinstance(data, dict) and 'gpu_num' in data:
+            gpu_value = data.get('gpu_num')
+            if isinstance(gpu_value, str) and gpu_value.strip() not in ["-", ""]:
+                # Parse format like "H100*4"
+                if "*" in gpu_value:
+                    parts = gpu_value.split("*")
+                    if len(parts) == 2:
+                        data['gpu_type'] = parts[0].strip()
+                        try:
+                            data['gpu_num'] = int(parts[1].strip())
+                        except (ValueError, IndexError):
+                            data['gpu_num'] = 0
+                    else:
+                        data['gpu_num'] = 0
+                else:
+                    # If it's just a number string, try to parse it
+                    try:
+                        data['gpu_num'] = int(gpu_value.strip())
+                    except (ValueError, TypeError):
+                        data['gpu_num'] = 0
+            elif gpu_value in [None, "-", ""]:
+                data['gpu_num'] = 0
+        return data
+    
+    @field_validator('cpu_num', mode='before')
+    @classmethod
+    def parse_cpu_num(cls, v):
+        """Parse CPU number from string like '4c' to float"""
+        if v is None:
+            return None
+        if isinstance(v, (int, float)):
+            return float(v)
+        if isinstance(v, str):
+            v = v.strip()
+            if v == "" or v == "-":
+                return None
+            # Remove 'c' suffix if present (e.g., "4c" -> "4")
+            if v.endswith('c'):
+                v = v[:-1].strip()
+            try:
+                return float(v)
+            except (ValueError, TypeError):
+                return None
+        return None
+    
+    @field_validator('cpu_memory', mode='before')
+    @classmethod
+    def parse_cpu_memory(cls, v):
+        """Parse CPU memory from string like '80.0Gi' to float (in GiB)"""
+        if v is None:
+            return None
+        if isinstance(v, (int, float)):
+            return float(v)
+        if isinstance(v, str):
+            v = v.strip()
+            if v == "" or v == "-":
+                return None
+            # Remove common suffixes: Gi, GB, Mi, MB, etc.
+            import re
+            # Match number followed by optional unit
+            match = re.match(r'^([\d.]+)', v)
+            if match:
+                try:
+                    return float(match.group(1))
+                except (ValueError, TypeError):
+                    return None
+            try:
+                return float(v)
+            except (ValueError, TypeError):
+                return None
+        return None
+    
+    @field_validator('amount', mode='before')
+    @classmethod
+    def parse_amount(cls, v):
+        """Parse amount from string or number to float"""
+        if v is None:
+            return None
+        if isinstance(v, (int, float)):
+            return float(v)
+        if isinstance(v, str):
+            v = v.strip()
+            if v == "" or v == "-":
+                return None
+            try:
+                return float(v)
+            except (ValueError, TypeError):
+                return None
+        return None
+    
+    @field_validator('duration', mode='before')
+    @classmethod
+    def parse_duration(cls, v):
+        """Parse duration from string to timedelta
+        
+        Handles formats like:
+        - "00:22:16" -> timedelta(hours=0, minutes=22, seconds=16)
+        - "1day 02:30:45" -> timedelta(days=1, hours=2, minutes=30, seconds=45)
+        - "2days 05:10:20" -> timedelta(days=2, hours=5, minutes=10, seconds=20)
+        """
+        if v is None:
+            return None
+        if isinstance(v, timedelta):
+            return v
+        if isinstance(v, str):
+            v = v.strip()
+            if v == "" or v == "-":
+                return None
+            try:
+                # Parse format like "1day 02:30:45" or "2days 05:10:20"
+                if "day" in v.lower():
+                    # Format: "Nd HH:MM:SS" or "Ndays HH:MM:SS"
+                    parts = v.split()
+                    days = 0
+                    time_str = ""
+                    
+                    for part in parts:
+                        part_lower = part.lower()
+                        if "day" in part_lower:
+                            # Extract number from "1day" or "2days"
+                            import re
+                            match = re.search(r'(\d+)', part)
+                            if match:
+                                days = int(match.group(1))
+                        elif ":" in part:
+                            time_str = part
+                    
+                    if time_str:
+                        # Parse HH:MM:SS
+                        time_parts = time_str.split(":")
+                        if len(time_parts) == 3:
+                            hours = int(time_parts[0])
+                            minutes = int(time_parts[1])
+                            seconds = int(time_parts[2])
+                            return timedelta(days=days, hours=hours, minutes=minutes, seconds=seconds)
+                    elif days > 0:
+                        return timedelta(days=days)
+                
+                # Parse format like "HH:MM:SS" or "MM:SS"
+                elif ":" in v:
+                    time_parts = v.split(":")
+                    if len(time_parts) == 3:
+                        # HH:MM:SS
+                        hours = int(time_parts[0])
+                        minutes = int(time_parts[1])
+                        seconds = int(time_parts[2])
+                        return timedelta(hours=hours, minutes=minutes, seconds=seconds)
+                    elif len(time_parts) == 2:
+                        # MM:SS
+                        minutes = int(time_parts[0])
+                        seconds = int(time_parts[1])
+                        return timedelta(minutes=minutes, seconds=seconds)
+                
+                # Try to parse as seconds (integer string)
+                try:
+                    seconds = float(v)
+                    return timedelta(seconds=seconds)
+                except ValueError:
+                    return None
+            except (ValueError, TypeError, IndexError):
+                return None
+        return None
+    
+    @field_validator('start_at', 'end_at', mode='before')
+    @classmethod
+    def parse_datetime(cls, v):
+        """Parse datetime from string if needed"""
+        if v is None:
+            return None
+        if isinstance(v, datetime):
+            return v
+        if isinstance(v, str):
+            try:
+                # Try ISO format first (most common)
+                return datetime.fromisoformat(v.replace('Z', '+00:00'))
+            except (ValueError, AttributeError):
+                try:
+                    # Try common datetime formats
+                    from datetime import datetime as dt
+                    # Try various formats
+                    for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%dT%H:%M:%S.%f']:
+                        try:
+                            return dt.strptime(v, fmt)
+                        except ValueError:
+                            continue
+                    return None
+                except (ValueError, TypeError):
+                    return None
+        return None
+    
 
 
 class TrainingTaskResponse(BaseModel):
@@ -330,18 +526,44 @@ class TrainingTaskResponse(BaseModel):
     name: str
     status: str  # Using task status from backend
     metrics: Optional[Dict[str, Any]] = None  # Training metrics
-    logs_url: Optional[str] = None  # URL to access training logs
     nodes: Optional[List[TrainingTaskNodeInfo]] = None  # List of nodes in this task
-    created_at: Optional[Union[str, datetime]] = None
-    started_at: Optional[Union[str, datetime]] = None
-    completed_at: Optional[Union[str, datetime]] = None
-    expires_at: Optional[Union[str, datetime]] = None
+    created_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
     error_message: Optional[str] = None
+    
+    @field_validator('created_at', 'started_at', 'completed_at', 'expires_at', mode='before')
+    @classmethod
+    def parse_datetime(cls, v):
+        """Parse datetime from string if needed"""
+        if v is None:
+            return None
+        if isinstance(v, datetime):
+            return v
+        if isinstance(v, str):
+            try:
+                # Try ISO format first (most common)
+                return datetime.fromisoformat(v.replace('Z', '+00:00'))
+            except (ValueError, AttributeError):
+                try:
+                    # Try common datetime formats
+                    from datetime import datetime as dt
+                    # Try various formats
+                    for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%dT%H:%M:%S.%f']:
+                        try:
+                            return dt.strptime(v, fmt)
+                        except ValueError:
+                            continue
+                    return None
+                except (ValueError, TypeError):
+                    return None
+        return None
 
 
 class TrainingTaskListAPIResponse(BaseModel):
     """List training jobs API response"""
-    jobs: List[TrainingTaskResponse]
+    tasks: List[TrainingTaskResponse]
 
 
 class TrainingTaskAPIResponse(BaseModel):
