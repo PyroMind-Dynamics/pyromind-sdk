@@ -201,4 +201,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    jobs = list_training_jobs_example()
+    print(jobs)
+    # main()
