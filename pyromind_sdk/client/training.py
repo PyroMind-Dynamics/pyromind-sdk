@@ -77,6 +77,18 @@ class TrainingClient(PyroMindClient):
         # Backend returns the job data directly in the data field
         return TrainingTaskResponse(**data)
     
+    def get_task(self, task_id: str) -> TrainingTaskResponse:
+        """
+        Get a specific training task by ID (alias for get_job)
+        
+        Args:
+            task_id: ID of the training task to retrieve (can be int or str)
+            
+        Returns:
+            TrainingTaskResponse object
+        """
+        return self.get_job(task_id)
+    
     def delete(self, task_id: str, force: bool = False) -> None:
         """
         Delete a training task
