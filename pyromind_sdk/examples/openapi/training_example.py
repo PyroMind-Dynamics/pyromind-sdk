@@ -11,13 +11,15 @@ The API key can be provided via:
 If neither is provided, the client will raise a ValueError.
 """
 
+
+from pathlib import Path
 from pyromind_sdk import PyroMindAPIClient, PyroMindAPIError
 from pyromind_sdk.client.models import (
     TrainingTaskCreateRequest,
 )
 
 
-def create_training_task_example():
+def create_training_task_example(workflow_path : str):
     """Example: Create a new training task"""
     # API key is read from PYROMIND_API_KEY environment variable
     client = PyroMindAPIClient()
@@ -26,8 +28,6 @@ def create_training_task_example():
         print("Creating a new training task...")
         # Load workflow from JSON file (recommended)
         import json
-        from pathlib import Path
-        workflow_path = Path(__file__).parent / "workflows" / "llm_test.json"
         if workflow_path.exists():
             with open(workflow_path, "r", encoding="utf-8") as f:
                 workflow = json.load(f)
@@ -230,5 +230,8 @@ def main():
 if __name__ == "__main__":
     tasks = list_training_tasks_example()
     print(get_training_task_example(tasks[0].task_id))
-    create_training_task_example()
+    # workflow_path = Path(__file__).parent / "workflows" / "llm_test.json"
+    # create_training_task_example(workflow_path)
+    workflow_path_2 = Path(__file__).parent / "workflows" / "join_path.json"
+    create_training_task_example(workflow_path_2)
     # main()
