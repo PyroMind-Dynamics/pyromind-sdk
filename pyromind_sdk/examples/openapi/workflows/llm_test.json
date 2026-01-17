@@ -1,60 +1,15 @@
 {
-  "id": "414d1135-fcbb-46f8-80a0-bcea8703d92e",
+  "id": "189cc5d9-cb63-4b03-9a92-9a5b43ae17cc",
   "revision": 0,
-  "last_node_id": 4,
+  "last_node_id": 3,
   "last_link_id": 2,
   "nodes": [
     {
-      "id": 1,
-      "type": "Inference",
-      "pos": [
-        -563.8565673828125,
-        172.928466796875
-      ],
-      "size": [
-        270,
-        130
-      ],
-      "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "model_path",
-          "type": "MODEL",
-          "link": 1
-        },
-        {
-          "name": "environment",
-          "shape": 7,
-          "type": "ENV",
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "name": "endpoint",
-          "type": "STRING",
-          "links": [
-            2
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "Inference"
-      },
-      "widgets_values": [
-        "path/to/model",
-        3000,
-        1
-      ]
-    },
-    {
-      "id": 3,
+      "id": 2,
       "type": "CloneAndCacheModel",
       "pos": [
-        -904.7461547851562,
-        327.5476989746094
+        -862.0645751953125,
+        387.37481689453125
       ],
       "size": [
         270,
@@ -82,11 +37,11 @@
       ]
     },
     {
-      "id": 4,
+      "id": 3,
       "type": "TestLLMNode",
       "pos": [
-        -202.0144500732422,
-        107.5113296508789
+        -174.81687927246094,
+        374.64208984375
       ],
       "size": [
         270,
@@ -121,12 +76,57 @@
         100,
         0.7
       ]
+    },
+    {
+      "id": 1,
+      "type": "Inference",
+      "pos": [
+        -521.1500854492188,
+        367.2784729003906
+      ],
+      "size": [
+        270,
+        126
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model_path",
+          "type": "MODEL",
+          "link": 1
+        },
+        {
+          "name": "environment",
+          "shape": 7,
+          "type": "ENV",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "endpoint",
+          "type": "STRING",
+          "links": [
+            2
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Inference"
+      },
+      "widgets_values": [
+        3000,
+        1,
+        "NVIDIA-H100-NVL"
+      ]
     }
   ],
   "links": [
     [
       1,
-      3,
+      2,
       0,
       1,
       0,
@@ -136,7 +136,7 @@
       2,
       1,
       0,
-      4,
+      3,
       0,
       "STRING"
     ]
@@ -147,8 +147,8 @@
     "ds": {
       "scale": 0.7893635922852432,
       "offset": [
-        1014.1797889835875,
-        46.08850631724733
+        1014.32824718605,
+        45.92025368778984
       ]
     },
     "frontendVersion": "1.20.0"

@@ -24,22 +24,13 @@ def create_training_task_example():
     
     try:
         print("Creating a new training task...")
-        # Example workflow structure - this should match your actual workflow format
-        workflow = {
-            "nodes": [
-                {
-                    "id": "1",
-                    "type": "Training",
-                    "inputs": {
-                        "learning_rate": 0.001,
-                        "batch_size": 32,
-                        "epochs": 100
-                    }
-                }
-            ],
-            "edges": []
-        }
-        
+        # Load workflow from JSON file (recommended)
+        import json
+        from pathlib import Path
+        workflow_path = Path(__file__).parent / "workflows" / "llm_test.json"
+        if workflow_path.exists():
+            with open(workflow_path, "r", encoding="utf-8") as f:
+                workflow = json.load(f)
         task = client.training.create(
             TrainingTaskCreateRequest(
                 name="example-training",
@@ -239,4 +230,5 @@ def main():
 if __name__ == "__main__":
     tasks = list_training_tasks_example()
     print(get_training_task_example(tasks[0].task_id))
+    create_training_task_example()
     # main()
