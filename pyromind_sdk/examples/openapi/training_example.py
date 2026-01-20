@@ -11,32 +11,70 @@ The API key can be provided via:
 If neither is provided, the client will raise a ValueError.
 """
 
-
+import json
+import time
 from pathlib import Path
+from typing import Optional, Dict, List, Set, Tuple
+
 from pyromind_sdk import PyroMindAPIClient, PyroMindAPIError
-from pyromind_sdk.client.models import (
-    TrainingTaskCreateRequest,
-)
+from pyromind_sdk.client.models import TrainingTaskCreateRequest
 
 
-def create_training_task_example(workflow_path : str):
-    """Example: Create a new training task"""
-    # API key is read from PYROMIND_API_KEY environment variable
+def _format_datetime(dt) -> str:
+    """Format datetime object or string to readable format."""
+    if isinstance(dt, str):
+        return dt
+    return dt.strftime('%Y-%m-%d %H:%M:%S')
+
+
+def _format_duration(duration) -> str:
+    """Format timedelta object or string to readable format."""
+    if isinstance(duration, str):
+        return duration
+    
+    total_seconds = int(duration.total_seconds())
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    
+    if hours > 0:
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes:02d}:{seconds:02d}"
+
+
+def _load_workflow(workflow_path: Path) -> dict:
+    """Load workflow from JSON file."""
+    if not workflow_path.exists():
+        raise FileNotFoundError(f"Workflow file not found: {workflow_path}")
+    
+    with open(workflow_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def create_training_task_example(workflow_path: Path, task_name: str = "example-training") -> Optional[str]:
+    """
+    Example: Create a new training task.
+    
+    Args:
+        workflow_path: Path to the workflow JSON file
+        task_name: Name for the training task
+        
+    Returns:
+        Task ID if successful, None otherwise
+    """
     client = PyroMindAPIClient()
     
     try:
         print("Creating a new training task...")
-        # Load workflow from JSON file (recommended)
-        import json
-        if workflow_path.exists():
-            with open(workflow_path, "r", encoding="utf-8") as f:
-                workflow = json.load(f)
+        workflow = _load_workflow(workflow_path)
+        
         task = client.training.create(
             TrainingTaskCreateRequest(
-                name="example-training",
+                name=task_name,
                 workflow=workflow
             )
         )
+        
         print(f"✓ Training task created successfully!")
         print(f"  ID: {task.task_id}")
         print(f"  Name: {task.name}")
@@ -46,13 +84,20 @@ def create_training_task_example(workflow_path : str):
     except PyroMindAPIError as e:
         print(f"✗ Failed to create training task: {e.message}")
         return None
+    except FileNotFoundError as e:
+        print(f"✗ Failed to load workflow file: {e}")
+        return None
     finally:
         client.close()
 
 
-def list_training_tasks_example():
-    """Example: List all training tasks"""
-    # API key is read from PYROMIND_API_KEY environment variable
+def list_training_tasks_example() -> list:
+    """
+    Example: List all training tasks.
+    
+    Returns:
+        List of training tasks
+    """
     client = PyroMindAPIClient()
     
     try:
@@ -74,32 +119,32 @@ def list_training_tasks_example():
         client.close()
 
 
-def get_training_task_example(task_id: str):
-    """Example: Get a specific training task"""
-    # API key is read from PYROMIND_API_KEY environment variable
+def get_training_task_example(task_id: str) -> Optional[object]:
+    """
+    Example: Get a specific training task.
+    
+    Args:
+        task_id: ID of the training task to retrieve
+        
+    Returns:
+        Training task object if successful, None otherwise
+    """
     client = PyroMindAPIClient()
     
     try:
         print(f"Getting training task {task_id}...")
         task = client.training.get_task(task_id)
+        
         print(f"✓ Training task details:")
         print(f"  Name: {task.name}")
         print(f"  Status: {task.status}")
+        
         if task.started_at:
-            if isinstance(task.started_at, str):
-                print(f"  Started At: {task.started_at}")
-            else:
-                print(f"  Started At: {task.started_at.strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"  Started At: {_format_datetime(task.started_at)}")
         if task.completed_at:
-            if isinstance(task.completed_at, str):
-                print(f"  Completed At: {task.completed_at}")
-            else:
-                print(f"  Completed At: {task.completed_at.strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"  Completed At: {_format_datetime(task.completed_at)}")
         if task.created_at:
-            if isinstance(task.created_at, str):
-                print(f"  Created At: {task.created_at}")
-            else:
-                print(f"  Created At: {task.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"  Created At: {_format_datetime(task.created_at)}")
         
         # Display nodes information
         if task.nodes:
@@ -108,47 +153,32 @@ def get_training_task_example(task_id: str):
                 print(f"    Node {i}:")
                 print(f"      ID: {node.node_id}")
                 print(f"      Name: {node.node_name}")
+                
                 if node.start_at:
-                    if isinstance(node.start_at, str):
-                        print(f"      Started At: {node.start_at}")
-                    else:
-                        print(f"      Started At: {node.start_at.strftime('%Y-%m-%d %H:%M:%S')}")
+                    print(f"      Started At: {_format_datetime(node.start_at)}")
                 if node.end_at:
-                    if isinstance(node.end_at, str):
-                        print(f"      Ended At: {node.end_at}")
-                    else:
-                        print(f"      Ended At: {node.end_at.strftime('%Y-%m-%d %H:%M:%S')}")
+                    print(f"      Ended At: {_format_datetime(node.end_at)}")
                 if node.duration:
-                    # Format timedelta as readable string
-                    if isinstance(node.duration, str):
-                        print(f"      Duration: {node.duration}")
-                    else:
-                        total_seconds = int(node.duration.total_seconds())
-                        hours = total_seconds // 3600
-                        minutes = (total_seconds % 3600) // 60
-                        seconds = total_seconds % 60
-                        if hours > 0:
-                            duration_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-                        else:
-                            duration_str = f"{minutes:02d}:{seconds:02d}"
-                        print(f"      Duration: {duration_str}")
-                # Display resource information from resources field
+                    print(f"      Duration: {_format_duration(node.duration)}")
+                
+                # Display resource information
                 if node.resources:
                     if node.resources.cpu:
                         print(f"      CPU: {node.resources.cpu}")
                     if node.resources.memory:
                         print(f"      Memory: {node.resources.memory}")
                     if node.resources.gpu:
-                        gpu_info = node.resources.gpu
+                        gpu_info = str(node.resources.gpu)
                         if node.resources.gpu_card:
                             gpu_info = f"{node.resources.gpu_card}*{node.resources.gpu}"
                         print(f"      GPU: {gpu_info}")
+                
                 if node.amount is not None:
                     print(f"      Cost: ${node.amount:.3f}")
                 if node.url:
                     print(f"      WandB URL: {node.url}")
         else:
-            print(f"\n  Nodes: None or empty")
+            print("\n  Nodes: None or empty")
         
         return task
         
@@ -159,9 +189,16 @@ def get_training_task_example(task_id: str):
         client.close()
 
 
-def stop_training_task_example(task_id: str):
-    """Example: Stop a training task"""
-    # API key is read from PYROMIND_API_KEY environment variable
+def stop_training_task_example(task_id: str) -> Optional[object]:
+    """
+    Example: Stop a training task.
+    
+    Args:
+        task_id: ID of the training task to stop
+        
+    Returns:
+        Training task object if successful, None otherwise
+    """
     client = PyroMindAPIClient()
     
     try:
@@ -178,24 +215,246 @@ def stop_training_task_example(task_id: str):
         client.close()
 
 
-def delete_training_task_example(task_id: str):
-    """Example: Delete a training task"""
-    # API key is read from PYROMIND_API_KEY environment variable
+def delete_training_task_example(task_id: str) -> bool:
+    """
+    Example: Delete a training task.
+    
+    Args:
+        task_id: ID of the training task to delete
+        
+    Returns:
+        True if successful, False otherwise
+    """
     client = PyroMindAPIClient()
     
     try:
         print(f"Deleting training task {task_id}...")
         client.training.delete(task_id)
         print(f"✓ Training task deleted successfully!")
+        return True
         
     except PyroMindAPIError as e:
         print(f"✗ Failed to delete training task: {e.message}")
+        return False
     finally:
         client.close()
 
 
+def wait_for_task_completion(task_id: str, target_status: str = "Succeeded", 
+                             check_interval: int = 5) -> Optional[object]:
+    """
+    Wait for a training task to reach the target status.
+    
+    Args:
+        task_id: ID of the training task to wait for
+        target_status: Target status to wait for (default: "Succeeded")
+        check_interval: Interval in seconds between status checks (default: 5)
+        
+    Returns:
+        Training task object when target status is reached, None on error
+    """
+    print(f"Waiting for task {task_id} to reach status '{target_status}'...")
+    
+    while True:
+        task = get_training_task_example(task_id)
+        if task is None:
+            return None
+        
+        if task.status == target_status:
+            print(f"✓ Task {task_id} reached status '{target_status}'")
+            return task
+        
+        print(f"  Current status: {task.status}, waiting {check_interval}s...")
+        time.sleep(check_interval)
+
+
+def parse_workflow_graph(workflow: dict) -> Tuple[Dict[int, dict], Dict[int, List[Tuple[int, str]]]]:
+    """
+    Parse workflow JSON to extract node information and connections.
+    
+    Args:
+        workflow: Workflow JSON dictionary
+        
+    Returns:
+        Tuple of (nodes_dict, adjacency_list)
+        - nodes_dict: Dictionary mapping node_id to node info
+        - adjacency_list: Dictionary mapping node_id to list of (target_node_id, connection_type) tuples
+    """
+    nodes_dict = {}
+    adjacency_list: Dict[int, List[Tuple[int, str]]] = {}
+    
+    # Parse nodes
+    for node in workflow.get("nodes", []):
+        node_id = node.get("id")
+        if node_id is None:
+            continue
+        
+        nodes_dict[node_id] = {
+            "id": node_id,
+            "type": node.get("type", "Unknown"),
+            "name": node.get("properties", {}).get("Node name for S&R", node.get("type", "Unknown")),
+            "inputs": node.get("inputs", []),
+            "outputs": node.get("outputs", []),
+        }
+        adjacency_list[node_id] = []
+    
+    # Parse links to build adjacency list
+    # Link format: [link_id, source_node_id, source_socket_index, target_node_id, target_socket_index, type]
+    for link in workflow.get("links", []):
+        if len(link) >= 6:
+            source_node_id = link[1]
+            target_node_id = link[3]
+            connection_type = link[5] if len(link) > 5 else "unknown"
+            
+            if source_node_id in adjacency_list and target_node_id in nodes_dict:
+                # Check if connection already exists
+                existing = any(tid == target_node_id for tid, _ in adjacency_list[source_node_id])
+                if not existing:
+                    adjacency_list[source_node_id].append((target_node_id, connection_type))
+    
+    return nodes_dict, adjacency_list
+
+
+def print_node_io(node_info: dict) -> None:
+    """
+    Print node inputs and outputs.
+    
+    Args:
+        node_info: Node information dictionary
+    """
+    print(f"\n  Node: {node_info['name']} (ID: {node_info['id']}, Type: {node_info['type']})")
+    
+    # Print inputs
+    inputs = node_info.get("inputs", [])
+    if inputs:
+        print(f"    Inputs ({len(inputs)}):")
+        for inp in inputs:
+            inp_name = inp.get("name", "unnamed")
+            inp_type = inp.get("type", "unknown")
+            print(f"      - {inp_name} ({inp_type})")
+    else:
+        print("    Inputs: None")
+    
+    # Print outputs
+    outputs = node_info.get("outputs", [])
+    if outputs:
+        print(f"    Outputs ({len(outputs)}):")
+        for out in outputs:
+            out_name = out.get("name", "unnamed")
+            out_type = out.get("type", "unknown")
+            links = out.get("links")
+            link_count = len(links) if links else 0
+            print(f"      - {out_name} ({out_type}) [connected to {link_count} node(s)]")
+    else:
+        print("    Outputs: None")
+
+
+def draw_workflow_graph(workflow: dict) -> None:
+    """
+    Draw workflow graph showing input nodes pointing to output nodes.
+    Also prints input/output information for each node.
+    
+    Args:
+        workflow: Workflow JSON dictionary
+    """
+    print("\n" + "=" * 60)
+    print("Workflow Graph Visualization")
+    print("=" * 60)
+    
+    nodes_dict, adjacency_list = parse_workflow_graph(workflow)
+    
+    if not nodes_dict:
+        print("No nodes found in workflow")
+        return
+    
+    # Print all nodes with their inputs and outputs
+    print("\n📋 Node Information:")
+    print("-" * 60)
+    for node_id in sorted(nodes_dict.keys()):
+        print_node_io(nodes_dict[node_id])
+    
+    # Build graph visualization
+    print("\n\n🔗 Workflow Graph (Input → Output):")
+    print("-" * 60)
+    
+    # Find nodes with no inputs (entry nodes)
+    entry_nodes: Set[int] = set()
+    all_targets: Set[int] = set()
+    for source_id, targets in adjacency_list.items():
+        if targets:
+            all_targets.update(tid for tid, _ in targets)
+    
+    for node_id in nodes_dict.keys():
+        if node_id not in all_targets:
+            entry_nodes.add(node_id)
+    
+    # If no clear entry nodes, use nodes with no outgoing connections as starting point
+    if not entry_nodes:
+        for node_id in nodes_dict.keys():
+            if not adjacency_list.get(node_id):
+                entry_nodes.add(node_id)
+    
+    # If still no entry nodes, use all nodes
+    if not entry_nodes:
+        entry_nodes = set(nodes_dict.keys())
+    
+    # Build a simple text-based graph
+    visited: Set[int] = set()
+    
+    def print_connections(node_id: int, indent: str = "", prefix: str = ""):
+        """Recursively print node connections."""
+        if node_id in visited:
+            return
+        
+        visited.add(node_id)
+        node_info = nodes_dict[node_id]
+        node_label = f"{node_info['name']} (ID:{node_id})"
+        
+        print(f"{indent}{prefix}{node_label}")
+        
+        targets = adjacency_list.get(node_id, [])
+        if targets:
+            for i, (target_id, conn_type) in enumerate(targets):
+                is_last = i == len(targets) - 1
+                connector = "└── " if is_last else "├── "
+                next_indent = indent + ("    " if is_last else "│   ")
+                print_connections(target_id, next_indent, connector)
+    
+    # Print graph starting from entry nodes
+    entry_list = sorted(entry_nodes)
+    for i, entry_id in enumerate(entry_list):
+        is_last = i == len(entry_list) - 1
+        prefix = "" if len(entry_list) == 1 else ("└── " if is_last else "├── ")
+        print_connections(entry_id, "", prefix)
+        if not is_last:
+            visited.clear()  # Reset for next tree
+    
+    # Print summary
+    print("\n\n📊 Graph Summary:")
+    print("-" * 60)
+    print(f"Total nodes: {len(nodes_dict)}")
+    print(f"Entry nodes (no inputs): {len(entry_nodes)}")
+    total_connections = sum(len(targets) for targets in adjacency_list.values())
+    print(f"Total connections: {total_connections}")
+    
+    # Print connection details
+    if total_connections > 0:
+        print("\nConnection Details:")
+        for source_id in sorted(adjacency_list.keys()):
+            targets = adjacency_list[source_id]
+            if targets:
+                source_name = nodes_dict[source_id]['name']
+                connections = []
+                for target_id, conn_type in targets:
+                    target_name = nodes_dict[target_id]['name']
+                    connections.append(f"{target_name} (ID:{target_id}, Type:{conn_type})")
+                print(f"  {source_name} (ID:{source_id}) → {', '.join(connections)}")
+    
+    print("=" * 60)
+
+
 def main():
-    """Main example function"""
+    """Main example function demonstrating training task management."""
     print("=" * 60)
     print("Training Task Management Examples")
     print("=" * 60)
@@ -214,24 +473,44 @@ def main():
         # Stop task (commented out to avoid disrupting running tasks)
         # stop_training_task_example(task_id)
     else:
-        print("\nNo existing training tasks found. Creating a new one...")
-        task_id = create_training_task_example()
-        
-        if task_id:
-            # Wait a bit for task to be ready
-            import time
-            print("\nWaiting for training task to be ready...")
-            time.sleep(2)
-            
-            # Get task details
-            get_training_task_example(task_id)
+        print("\nNo existing training tasks found.")
+        print("To create a new task, use create_training_task_example() with a workflow path.")
 
 
 if __name__ == "__main__":
-    tasks = list_training_tasks_example()
-    print(get_training_task_example(tasks[0].task_id))
-    # workflow_path = Path(__file__).parent / "workflows" / "llm_test.json"
-    # create_training_task_example(workflow_path)
-    workflow_path_2 = Path(__file__).parent / "workflows" / "join_path.json"
-    create_training_task_example(workflow_path_2)
-    # main()
+    # Example: Process multiple workflow files
+    workflow_files = ["llm_test.json", "join_path.json", "clone.json"]
+    workflows_dir = Path(__file__).parent / "workflows"
+    
+    for workflow_file in workflow_files:
+        workflow_path = workflows_dir / workflow_file
+        
+        if not workflow_path.exists():
+            print(f"⚠ Skipping {workflow_file}: file not found")
+            continue
+        
+        print(f"\n{'=' * 60}")
+        print(f"Processing workflow: {workflow_file}")
+        print(f"{'=' * 60}")
+        
+        # Create training task
+        task_id = create_training_task_example(workflow_path, task_name=f"training-{workflow_file}")
+        
+        if not task_id:
+            print(f"✗ Failed to create task for {workflow_file}")
+            continue
+        
+        # Wait for task completion
+        task = wait_for_task_completion(task_id, target_status="Succeeded")
+        
+        if task:
+            print(f"✓ Task {task_id} completed successfully")
+            
+            # Draw workflow graph after task completion
+            workflow = _load_workflow(workflow_path)
+            draw_workflow_graph(workflow)
+            
+            # Clean up: delete the task
+            delete_training_task_example(task_id)
+        else:
+            print(f"✗ Task {task_id} did not complete successfully")
