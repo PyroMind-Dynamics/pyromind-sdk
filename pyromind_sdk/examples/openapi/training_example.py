@@ -67,25 +67,13 @@ def create_training_task_example(workflow_path: Path, task_name: str = "example-
     try:
         print("Creating a new training task...")
         workflow = _load_workflow(workflow_path)
-        
         task = client.training.create(
-            TrainingTaskCreateRequest(
-                name=task_name,
-                workflow=workflow
-            )
+            TrainingTaskCreateRequest(name=task_name, workflow=workflow)
         )
-        
-        print(f"✓ Training task created successfully!")
-        print(f"  ID: {task.task_id}")
-        print(f"  Name: {task.name}")
-        print(f"  Status: {task.status}")
+        print(f"✓ Training task created: {task.task_id} ({task.name}) - {task.status}")
         return task.task_id
-        
-    except PyroMindAPIError as e:
-        print(f"✗ Failed to create training task: {e.message}")
-        return None
-    except FileNotFoundError as e:
-        print(f"✗ Failed to load workflow file: {e}")
+    except (PyroMindAPIError, FileNotFoundError) as e:
+        print(f"✗ Failed to create training task: {e}")
         return None
     finally:
         client.close()
@@ -215,27 +203,40 @@ def stop_training_task_example(task_id: str) -> Optional[object]:
         client.close()
 
 
-def delete_training_task_example(task_id: str) -> bool:
+def delete_training_task_example(task_id: str) -> None:
+    """Delete a training task."""
+    client = PyroMindAPIClient()
+    try:
+        client.training.delete(task_id)
+        print(f"✓ Training task {task_id} deleted")
+    except PyroMindAPIError as e:
+        print(f"✗ Failed to delete task: {e.message}")
+    finally:
+        client.close()
+
+
+def get_node_output_example(task_id: str, node_id: str) -> Optional[Dict]:
     """
-    Example: Delete a training task.
+    Example: Get output results for a specific node in a training task.
     
     Args:
-        task_id: ID of the training task to delete
+        task_id: ID of the training task
+        node_id: ID of the node
         
     Returns:
-        True if successful, False otherwise
+        Dictionary containing node outputs if successful, None otherwise
     """
     client = PyroMindAPIClient()
     
     try:
-        print(f"Deleting training task {task_id}...")
-        client.training.delete(task_id)
-        print(f"✓ Training task deleted successfully!")
-        return True
-        
+        outputs = client.training.get_node_output(task_id, node_id)
+        if outputs:
+            for param in outputs.get('parameters', []):
+                print(f"    - {param.get('name', 'unnamed')}: {param.get('value', 'N/A')}")
+        return outputs
     except PyroMindAPIError as e:
-        print(f"✗ Failed to delete training task: {e.message}")
-        return False
+        print(f"✗ Failed to get node output: {e.message}")
+        return None
     finally:
         client.close()
 
@@ -257,11 +258,17 @@ def wait_for_task_completion(task_id: str, target_status: str = "Succeeded",
     
     while True:
         task = get_training_task_example(task_id)
-        if task is None:
+        if not task:
             return None
         
         if task.status == target_status:
             print(f"✓ Task {task_id} reached status '{target_status}'")
+            # Get node outputs after task is completed
+            if task.nodes:
+                print("\nRetrieving node outputs...")
+                for node in task.nodes:
+                    if node.node_id:
+                        get_node_output_example(task_id, str(node.node_id))
             return task
         
         print(f"  Current status: {task.status}, waiting {check_interval}s...")
@@ -455,30 +462,6 @@ def draw_workflow_graph(workflow: dict) -> None:
 
 def main():
     """Main example function demonstrating training task management."""
-    print("=" * 60)
-    print("Training Task Management Examples")
-    print("=" * 60)
-    
-    # List existing tasks
-    tasks = list_training_tasks_example()
-    
-    # If we have tasks, demonstrate operations
-    if tasks:
-        task_id = tasks[0].task_id
-        print(f"\nUsing training task: {task_id}")
-        
-        # Get task details
-        get_training_task_example(task_id)
-        
-        # Stop task (commented out to avoid disrupting running tasks)
-        # stop_training_task_example(task_id)
-    else:
-        print("\nNo existing training tasks found.")
-        print("To create a new task, use create_training_task_example() with a workflow path.")
-
-
-if __name__ == "__main__":
-    # Example: Process multiple workflow files
     workflow_files = ["llm_test.json", "join_path.json", "clone.json"]
     workflows_dir = Path(__file__).parent / "workflows"
     
@@ -493,24 +476,16 @@ if __name__ == "__main__":
         print(f"Processing workflow: {workflow_file}")
         print(f"{'=' * 60}")
         
-        # Create training task
         task_id = create_training_task_example(workflow_path, task_name=f"training-{workflow_file}")
-        
         if not task_id:
-            print(f"✗ Failed to create task for {workflow_file}")
             continue
         
-        # Wait for task completion
         task = wait_for_task_completion(task_id, target_status="Succeeded")
-        
         if task:
-            print(f"✓ Task {task_id} completed successfully")
-            
-            # Draw workflow graph after task completion
             workflow = _load_workflow(workflow_path)
             draw_workflow_graph(workflow)
-            
-            # Clean up: delete the task
             delete_training_task_example(task_id)
-        else:
-            print(f"✗ Task {task_id} did not complete successfully")
+
+
+if __name__ == "__main__":
+    main()

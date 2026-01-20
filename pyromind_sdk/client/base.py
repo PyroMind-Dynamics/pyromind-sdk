@@ -176,8 +176,33 @@ class PyroMindClient:
                         error_message += f" Server message: {error_data.get('message')}"
                 elif response.status_code == 404:
                     error_message = "Resource not found (404). The requested resource does not exist."
-                    if error_data.get("message"):
-                        error_message += f" Details: {error_data.get('message')}"
+                    # Try to extract detailed error information from the response
+                    if isinstance(error_data, dict):
+                        # Check for nested error structure (APIResponse format)
+                        if "error" in error_data:
+                            error_obj = error_data.get("error", {})
+                            if isinstance(error_obj, dict):
+                                error_code = error_obj.get("code", "")
+                                error_msg = error_obj.get("message", "")
+                                if error_code:
+                                    error_message = f"{error_code}: {error_msg}"
+                                elif error_msg:
+                                    error_message = error_msg
+                        elif "detail" in error_data:
+                            detail = error_data.get("detail")
+                            if isinstance(detail, dict) and "error" in detail:
+                                error_obj = detail.get("error", {})
+                                if isinstance(error_obj, dict):
+                                    error_code = error_obj.get("code", "")
+                                    error_msg = error_obj.get("message", "")
+                                    if error_code:
+                                        error_message = f"{error_code}: {error_msg}"
+                                    elif error_msg:
+                                        error_message = error_msg
+                            elif isinstance(detail, str):
+                                error_message = detail
+                        elif error_data.get("message"):
+                            error_message += f" Details: {error_data.get('message')}"
                 elif response.status_code == 422:
                     error_message = "Unprocessable Entity (422). The request was well-formed but contains semantic errors."
                     if error_data.get("message"):

@@ -292,6 +292,33 @@ client.training.stop(task_id="task-id")
 client.training.delete(task_id="task-id", force=False)
 ```
 
+### Get node output
+
+```python
+# Get output results for a specific node in a training task
+outputs = client.training.get_node_output(task_id="task-id", node_id="node-id")
+
+if outputs:
+    print(f"Exit code: {outputs.get('exit_code')}")
+    for param in outputs.get('parameters', []):
+        print(f"{param['name']}: {param['value']}")
+```
+
+The output format is:
+```python
+{
+    "exit_code": "0",
+    "parameters": [
+        {
+            "name": "task_id1",
+            "value": "123",
+            "value_from": {"path": "/tmp/task_id1.txt"}
+        },
+        ...
+    ]
+}
+```
+
 ## Error Handling
 
 ```python

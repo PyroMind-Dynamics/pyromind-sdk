@@ -4,7 +4,7 @@ Training API Client
 This module provides a client for managing training tasks via the PyroMind API.
 """
 
-from typing import List
+from typing import List, Dict, Any, Optional
 from .base import PyroMindClient
 from .models import (
     TrainingTaskCreateRequest,
@@ -123,3 +123,45 @@ class TrainingClient(PyroMindClient):
             return self.get_job(data["task_id"])
         # Fallback: try to construct from available data
         return TrainingTaskResponse(**data)
+    
+    def get_node_output(self, task_id: str, node_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get output results for a specific node in a training task
+        
+        Args:
+            task_id: ID of the training task (can be int or str)
+            node_id: ID of the node (can be int or str)
+            
+        Returns:
+            Dictionary containing node outputs, or None if not found.
+            The output format is:
+            {
+                "exit_code": "0",
+                "parameters": [
+                    {
+                        "name": "task_id1",
+                        "value": "123"
+                    },
+                    ...
+                ]
+            }
+            
+        Example:
+            ```python
+            outputs = client.training.get_node_output(task_id="123", node_id="5")
+            if outputs:
+                print(f"Exit code: {outputs.get('exit_code')}")
+                for param in outputs.get('parameters', []):
+                    print(f"{param['name']}: {param['value']}")
+            ```
+        """
+        response = self.get(f"/training/tasks/{task_id}/nodes/{node_id}/output")
+        # API returns {success: True, data: {...}} format
+        data = self._extract_data(response)
+        
+        # Backend returns outputs directly in the data field
+        # If data is None or empty dict, return None
+        if not data:
+            return None
+        
+        return data if isinstance(data, dict) else None
