@@ -165,3 +165,38 @@ class TrainingClient(PyroMindClient):
             return None
         
         return data if isinstance(data, dict) else None
+    
+    def get_node_info(self) -> Dict[str, Any]:
+        """
+        Get node information dictionary for the current user.
+        
+        This method returns all available node information, including their
+        input/output definitions, display names, descriptions, and other metadata.
+        The result is cached per user to improve performance.
+        
+        Returns:
+            Dictionary mapping node names to their information dictionaries.
+            Each node info dictionary contains:
+            - input: Input definitions
+            - output: Output definitions
+            - display_name: Human-readable node name
+            - description: Node description
+            - category: Node category
+            - other metadata fields
+            
+        Example:
+            ```python
+            node_info = client.training.get_node_info()
+            for node_name, info in node_info.items():
+                print(f"Node: {info['display_name']}")
+                print(f"  Category: {info.get('category', 'N/A')}")
+                print(f"  Inputs: {info.get('input', {})}")
+                print(f"  Outputs: {info.get('output', [])}")
+            ```
+        """
+        response = self.get("/training/node_info")
+        # API returns {success: True, data: {...}} format
+        data = self._extract_data(response)
+        
+        # Backend returns node info dictionary directly in the data field
+        return data if isinstance(data, dict) else {}

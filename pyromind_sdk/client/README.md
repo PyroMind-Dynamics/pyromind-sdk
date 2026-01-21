@@ -311,11 +311,45 @@ The output format is:
     "parameters": [
         {
             "name": "task_id1",
-            "value": "123",
-            "value_from": {"path": "/tmp/task_id1.txt"}
+            "value": "123"
         },
         ...
     ]
+}
+```
+
+### Get node info
+
+```python
+# Get all available node information for the current user
+node_info = client.training.get_node_info()
+
+# Access node information
+for node_name, info in node_info.items():
+    print(f"Node: {info['display_name']}")
+    print(f"  Category: {info.get('category', 'N/A')}")
+    print(f"  Description: {info.get('description', 'N/A')}")
+    print(f"  Inputs: {list(info.get('input', {}).keys())}")
+    print(f"  Outputs: {info.get('output', [])}")
+```
+
+The node info format is:
+```python
+{
+    "NodeName1": {
+        "input": {
+            "input_name1": "type1",
+            "input_name2": "type2"
+        },
+        "output": ["output_type1", "output_type2"],
+        "display_name": "Human Readable Name",
+        "description": "Node description",
+        "category": "category_name",
+        ...
+    },
+    "NodeName2": {
+        ...
+    }
 }
 ```
 
