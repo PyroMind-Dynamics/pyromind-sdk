@@ -18,6 +18,7 @@ from typing import Optional, Dict, List, Set, Tuple
 
 from pyromind_sdk import PyroMindAPIClient, PyroMindAPIError
 from pyromind_sdk.client.models import TrainingTaskCreateRequest
+from pyromind_sdk.client import validate_workflow, WorkflowValidationError
 
 
 def _format_datetime(dt) -> str:
@@ -49,15 +50,15 @@ def _load_workflow(workflow_path: Path) -> dict:
     
     with open(workflow_path, "r", encoding="utf-8") as f:
         return json.load(f)
-
-
-def create_training_task_example(workflow_path: Path, task_name: str = "example-training") -> Optional[str]:
+def create_training_task_example(workflow_path: Path, task_name: str = "example-training", 
+                                 validate: bool = True) -> Optional[str]:
     """
     Example: Create a new training task.
     
     Args:
         workflow_path: Path to the workflow JSON file
         task_name: Name for the training task
+        validate: Whether to validate workflow before sending to server (default: True)
         
     Returns:
         Task ID if successful, None otherwise
@@ -67,12 +68,28 @@ def create_training_task_example(workflow_path: Path, task_name: str = "example-
     try:
         print("Creating a new training task...")
         workflow = _load_workflow(workflow_path)
+        
+        # Validate workflow before sending to server
+        if validate:
+            print("Validating workflow...")
+            try:
+                is_valid, errors = validate_workflow(workflow, client)
+                if not is_valid:
+                    print("✗ Workflow validation failed:")
+                    for error in errors:
+                        print(f"  - {error}")
+                    raise WorkflowValidationError(f"Workflow validation failed with {len(errors)} error(s)")
+                print(f"✓ Workflow validation passed ({len(workflow.get('nodes', []))} nodes)")
+            except PyroMindAPIError as e:
+                print(f"⚠ Warning: Failed to get node info for validation: {e.message}")
+                print("  Continuing without validation...")
+        
         task = client.training.create(
             TrainingTaskCreateRequest(name=task_name, workflow=workflow)
         )
         print(f"✓ Training task created: {task.task_id} ({task.name}) - {task.status}")
         return task.task_id
-    except (PyroMindAPIError, FileNotFoundError) as e:
+    except (PyroMindAPIError, FileNotFoundError, WorkflowValidationError) as e:
         print(f"✗ Failed to create training task: {e}")
         return None
     finally:

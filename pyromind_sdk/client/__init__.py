@@ -10,6 +10,7 @@ from .instance import InstanceClient
 from .inference import InferenceClient
 from .training import TrainingClient
 from .client import PyroMindAPIClient
+from .workflow_validator import validate_workflow, WorkflowValidationError
 
 __all__ = [
     "PyroMindClient",
@@ -19,4 +20,6 @@ __all__ = [
     "InferenceClient",
     "TrainingClient",
     "PyroMindAPIClient",
+    "validate_workflow",
+    "WorkflowValidationError",
 ]
