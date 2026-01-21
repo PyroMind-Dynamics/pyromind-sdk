@@ -241,6 +241,68 @@ def get_node_output_example(task_id: str, node_id: str) -> Optional[Dict]:
         client.close()
 
 
+def get_node_info_example() -> Optional[Dict]:
+    """
+    Example: Get all available node information for the current user.
+    
+    This method returns all available node information, including their
+    input/output definitions, display names, descriptions, and other metadata.
+    
+    Returns:
+        Dictionary mapping node names to their information dictionaries if successful, None otherwise.
+        Each node info dictionary contains:
+        - input: Input definitions
+        - output: Output definitions
+        - display_name: Human-readable node name
+        - description: Node description
+        - category: Node category
+        - other metadata fields
+    """
+    client = PyroMindAPIClient()
+    
+    try:
+        print("Getting node information...")
+        node_info = client.training.get_node_info()
+        
+        if node_info:
+            print(f"✓ Retrieved information for {len(node_info)} node(s):")
+            print()
+            
+            for node_name, info in node_info.items():
+                print(f"  Node: {node_name}")
+                print(f"    Display Name: {info.get('display_name', 'N/A')}")
+                print(f"    Category: {info.get('category', 'N/A')}")
+                print(f"    Description: {info.get('description', 'N/A')}")
+                
+                # Display inputs
+                inputs = info.get('input', {})
+                if inputs:
+                    print(f"    Inputs ({len(inputs)}):")
+                    for input_name, input_type in inputs.items():
+                        print(f"      - {input_name}: {input_type}")
+                else:
+                    print("    Inputs: None")
+                
+                # Display outputs
+                outputs = info.get('output', [])
+                if outputs:
+                    print(f"    Outputs ({len(outputs)}):")
+                    for output in outputs:
+                        print(f"      - {output}")
+                else:
+                    print("    Outputs: None")
+                
+                print()
+        
+        return node_info
+        
+    except PyroMindAPIError as e:
+        print(f"✗ Failed to get node info: {e.message}")
+        return None
+    finally:
+        client.close()
+
+
 def wait_for_task_completion(task_id: str, target_status: str = "Succeeded", 
                              check_interval: int = 5) -> Optional[object]:
     """
@@ -462,6 +524,13 @@ def draw_workflow_graph(workflow: dict) -> None:
 
 def main():
     """Main example function demonstrating training task management."""
+    # First, demonstrate getting node information
+    print("=" * 60)
+    print("Getting Node Information")
+    print("=" * 60)
+    get_node_info_example()
+    
+    # Then process workflow files
     workflow_files = ["llm_test.json", "join_path.json", "clone.json"]
     workflows_dir = Path(__file__).parent / "workflows"
     

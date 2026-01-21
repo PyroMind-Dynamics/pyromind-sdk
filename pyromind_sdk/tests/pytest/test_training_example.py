@@ -49,6 +49,7 @@ get_training_task_example = training_example.get_training_task_example
 stop_training_task_example = training_example.stop_training_task_example
 delete_training_task_example = training_example.delete_training_task_example
 get_node_output_example = training_example.get_node_output_example
+get_node_info_example = training_example.get_node_info_example
 wait_for_task_completion = training_example.wait_for_task_completion
 _load_workflow = training_example._load_workflow
 
@@ -552,6 +553,74 @@ class TestGetNodeOutput:
             if "not found" in str(e).lower() or "not available" in str(e).lower():
                 pytest.skip(f"Node output not available yet: {str(e)}")
             raise
+
+
+class TestGetNodeInfo:
+    """Test cases for getting node information"""
+    
+    def test_get_node_info(self, client):
+        """Test getting all available node information"""
+        print("[TEST] Testing get_node_info...")
+        try:
+            node_info = client.training.get_node_info()
+            print(f"[TEST] Retrieved information for {len(node_info) if node_info else 0} node(s)")
+        except Exception as e:
+            print(f"[ERROR] Failed to get node info: {type(e).__name__}: {str(e)}")
+            raise
+        
+        # Verify node_info is a dictionary
+        assert isinstance(node_info, dict), f"Expected dict, got {type(node_info).__name__}"
+        
+        # If nodes exist, verify their structure
+        if node_info:
+            for node_name, info in node_info.items():
+                assert isinstance(node_name, str), f"Node name should be string, got {type(node_name).__name__}"
+                assert isinstance(info, dict), f"Node info should be dict, got {type(info).__name__} for node {node_name}"
+                
+                # Verify common fields exist (they may be None)
+                assert 'display_name' in info or 'input' in info or 'output' in info, \
+                    f"Node {node_name} missing expected fields"
+                
+                # If inputs exist, verify structure
+                if 'input' in info and info['input']:
+                    assert isinstance(info['input'], dict), \
+                        f"Node {node_name} input should be dict, got {type(info['input']).__name__}"
+                
+                # If outputs exist, verify structure
+                if 'output' in info and info['output']:
+                    assert isinstance(info['output'], list), \
+                        f"Node {node_name} output should be list, got {type(info['output']).__name__}"
+                
+                print(f"[TEST] Node {node_name}: display_name={info.get('display_name', 'N/A')}, "
+                      f"category={info.get('category', 'N/A')}, "
+                      f"inputs={len(info.get('input', {}))}, "
+                      f"outputs={len(info.get('output', []))}")
+        else:
+            print("[TEST] No node information available (this may be expected)")
+    
+    def test_get_node_info_example_function(self):
+        """Test the get_node_info_example function"""
+        print("[TEST] Testing get_node_info_example function...")
+        try:
+            node_info = get_node_info_example()
+            print(f"[TEST] Function returned node info: {len(node_info) if node_info else 0} node(s)")
+        except Exception as e:
+            print(f"[ERROR] Function failed: {type(e).__name__}: {str(e)}")
+            raise
+        
+        # Verify node_info is a dictionary (or None if failed)
+        if node_info is not None:
+            assert isinstance(node_info, dict), \
+                f"Expected dict or None, got {type(node_info).__name__}"
+            
+            # If nodes exist, verify their structure
+            if node_info:
+                for node_name, info in node_info.items():
+                    assert isinstance(node_name, str)
+                    assert isinstance(info, dict)
+                    print(f"[TEST] Verified node {node_name} structure")
+        else:
+            print("[TEST] Function returned None (may indicate API error)")
 
 
 class TestWaitForTaskCompletion:
