@@ -5,9 +5,12 @@ This module provides a client for managing file storage operations via MinIO/S3-
 """
 
 import os
+import mimetypes
 from pathlib import Path
 from typing import List, Dict, Any, Optional, BinaryIO, Union
 from collections import deque
+from urllib.parse import urlparse
+
 try:
     from minio import Minio
     from minio.error import S3Error
@@ -16,6 +19,16 @@ except ImportError:
         "minio package is required for storage operations. "
         "Please install it with: pip install minio"
     )
+
+
+# Constants
+DEFAULT_STORAGE_ENDPOINT = "https://storage.pyromind.ai"
+DEFAULT_REGION = "us-east-1"
+DEFAULT_CONTENT_TYPE = "application/octet-stream"
+ENV_STORAGE_ENDPOINT = "PYROMIND_STORAGE_ENDPOINT"
+ENV_API_KEY = "PYROMIND_API_KEY"
+ENV_STORAGE_SECRET_KEY = "PYROMIND_STORAGE_SECRET_KEY"
+ENV_STORAGE_BUCKET = "PYROMIND_STORAGE_BUCKET"
 
 
 class StorageClient:
@@ -43,7 +56,7 @@ class StorageClient:
     ):
         """
         Initialize the Storage Client
-        
+
         Args:
             endpoint: Storage endpoint URL (e.g., "https://storage.pyromind.ai")
                     If not provided, reads from PYROMIND_STORAGE_ENDPOINT env var
@@ -56,56 +69,53 @@ class StorageClient:
                         If not provided, reads from PYROMIND_STORAGE_BUCKET env var
             secure: Whether to use HTTPS (default: False)
             region: Storage region (optional)
-        
+
         Raises:
             ValueError: If required credentials are not provided
         """
         # Get endpoint from parameter or environment variable
-        # Default to https://storage.pyromind.ai if not provided
         if endpoint is None:
-            endpoint = os.getenv("PYROMIND_STORAGE_ENDPOINT", "https://storage.pyromind.ai")
-        
+            endpoint = os.getenv(ENV_STORAGE_ENDPOINT, DEFAULT_STORAGE_ENDPOINT)
+
         if not endpoint:
             raise ValueError(
-                "Storage endpoint is required. Please provide it either as a parameter "
-                "or set the PYROMIND_STORAGE_ENDPOINT environment variable."
+                f"Storage endpoint is required. Please provide it either as a parameter "
+                f"or set the {ENV_STORAGE_ENDPOINT} environment variable."
             )
-        
+
         # Get access key from parameter or environment variable
-        # Use PYROMIND_API_KEY as the access key
         if access_key is None:
-            access_key = os.getenv("PYROMIND_API_KEY")
-        
+            access_key = os.getenv(ENV_API_KEY)
+
         if not access_key:
             raise ValueError(
-                "Storage access key is required. Please provide it either as a parameter "
-                "or set the PYROMIND_API_KEY environment variable."
+                f"Storage access key is required. Please provide it either as a parameter "
+                f"or set the {ENV_API_KEY} environment variable."
             )
-        
+
         # Get secret key from parameter or environment variable
         if secret_key is None:
-            secret_key = os.getenv("PYROMIND_STORAGE_SECRET_KEY")
-        
+            secret_key = os.getenv(ENV_STORAGE_SECRET_KEY)
+
         if not secret_key:
             raise ValueError(
-                "Storage secret key is required. Please provide it either as a parameter "
-                "or set the PYROMIND_STORAGE_SECRET_KEY environment variable."
+                f"Storage secret key is required. Please provide it either as a parameter "
+                f"or set the {ENV_STORAGE_SECRET_KEY} environment variable."
             )
-        
+
         # Get bucket name from parameter or environment variable
         if bucket_name is None:
-            bucket_name = os.getenv("PYROMIND_STORAGE_BUCKET")
+            bucket_name = os.getenv(ENV_STORAGE_BUCKET)
         
         # Strip whitespace
         endpoint = endpoint.strip()
         access_key = access_key.strip()
         secret_key = secret_key.strip()
-        
+
         # Parse endpoint URL to extract hostname and port
         # MinIO client expects format like "hostname:port" or "hostname"
         # If endpoint contains https:// or http://, extract the hostname and set secure flag
-        from urllib.parse import urlparse
-        
+
         # Check if endpoint is a URL with scheme
         if endpoint.startswith(('http://', 'https://')):
             parsed = urlparse(endpoint)
@@ -146,11 +156,11 @@ class StorageClient:
         # Pre-populate region cache for default bucket to avoid auto-detection
         # which may require s3:GetBucketLocation permission that some S3-compatible
         # services don't grant. This allows operations to proceed without region lookup.
-        # Use "us-east-1" as default region for S3-compatible services
+        # Use DEFAULT_REGION as default region for S3-compatible services
         if bucket_name and hasattr(self.client, '_region_map'):
-            # Set region to "us-east-1" to avoid GetBucketLocation API call
+            # Set region to DEFAULT_REGION to avoid GetBucketLocation API call
             # Most S3-compatible services work with this default region
-            self.client._region_map[bucket_name] = "us-east-1"
+            self.client._region_map[bucket_name] = DEFAULT_REGION
     
     def _ensure_bucket(self, bucket_name: str) -> None:
         """
@@ -181,15 +191,24 @@ class StorageClient:
         bucket = bucket_name or self.default_bucket
         if not bucket:
             raise ValueError(
-                "Bucket name is required. Please provide it either as a parameter "
-                "or set the PYROMIND_STORAGE_BUCKET environment variable."
+                f"Bucket name is required. Please provide it either as a parameter "
+                f"or set the {ENV_STORAGE_BUCKET} environment variable."
             )
         # Ensure region cache is set for this bucket to avoid GetBucketLocation API call
         # which may require s3:GetBucketLocation permission that some S3-compatible
         # services don't grant
-        if hasattr(self.client, '_region_map') and bucket not in self.client._region_map:
-            self.client._region_map[bucket] = "us-east-1"
+        self._cache_region(bucket)
         return bucket
+
+    def _cache_region(self, bucket: str) -> None:
+        """
+        Cache region for a bucket to avoid GetBucketLocation API call.
+
+        This is needed because some S3-compatible storage services don't grant
+        s3:GetBucketLocation permission, which can cause operations to fail.
+        """
+        if hasattr(self.client, '_region_map') and bucket not in self.client._region_map:
+            self.client._region_map[bucket] = DEFAULT_REGION
     
     def list_files(
         self,
@@ -402,17 +421,16 @@ class StorageClient:
         try:
             # Auto-detect content type if not provided
             if content_type is None and original_path is not None:
-                import mimetypes
                 content_type, _ = mimetypes.guess_type(str(original_path))
                 if content_type is None:
-                    content_type = "application/octet-stream"
-            
+                    content_type = DEFAULT_CONTENT_TYPE
+
             result = self.client.put_object(
                 bucket_name=bucket,
                 object_name=object_name,
                 data=file_obj,
                 length=file_size,
-                content_type=content_type or "application/octet-stream"
+                content_type=content_type or DEFAULT_CONTENT_TYPE
             )
             
             return {
