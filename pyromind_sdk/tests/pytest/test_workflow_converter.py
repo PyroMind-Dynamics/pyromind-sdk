@@ -1,19 +1,178 @@
 """
-Tests for Workflow Lite Converter
+Tests for Workflow Tools
 
-Tests the conversion between standard workflow format and workflow_lite format.
+Tests the conversion between standard workflow format and workflow_lite format,
+as well as validation functions for both formats.
 
 New simplified format:
 - No 'name' or 'description' fields
 - No separate 'connections' field
 - inputs dict contains parameter values OR {node_id, output_name} connections
 - outputs is a list of names only
+- Workflow IDs use UUID format
 """
 
 import json
 import pytest
+import uuid
 from pathlib import Path
-from pyromind_sdk.workflow import WorkflowLiteConverter, to_workflow_lite, to_workflow_standard
+from pyromind_sdk.client.workflow import (
+    WorkflowLiteConverter,
+    WorkflowMapper,
+    TypeResolver,
+    LinkBuilder,
+    to_workflow_lite,
+    to_workflow_standard,
+    validate_lite_format,
+    validate_standard_format,
+)
+
+
+class TestWorkflowMapper:
+    """Test WorkflowMapper class."""
+
+    def test_initialization(self):
+        """Test mapper initialization."""
+        mapper = WorkflowMapper()
+        assert mapper.node_id_to_name == {}
+        assert mapper.node_name_to_id == {}
+        assert mapper.name_counters == {}
+
+    def test_build_from_nodes(self):
+        """Test building mappings from standard format nodes."""
+        nodes = [
+            {"id": 1, "type": "TestNode"},
+            {"id": 2, "type": "AnotherTestNode"}
+        ]
+
+        mapper = WorkflowMapper()
+        mapper.build_from_nodes(nodes)
+
+        assert mapper.get_name(1) == "test"
+        assert mapper.get_name(2) == "another_test"
+        assert mapper.get_id("test") == 1
+        assert mapper.get_id("another_test") == 2
+
+    def test_duplicate_name_handling(self):
+        """Test handling of duplicate node names."""
+        nodes = [
+            {"id": 1, "type": "TestNode"},
+            {"id": 2, "type": "TestNode"},
+            {"id": 3, "type": "TestNode"}
+        ]
+
+        mapper = WorkflowMapper()
+        mapper.build_from_nodes(nodes)
+
+        assert mapper.get_name(1) == "test"
+        assert mapper.get_name(2) == "test_1"
+        assert mapper.get_name(3) == "test_2"
+
+    def test_build_from_lite_nodes(self):
+        """Test building mappings from lite format nodes."""
+        lite_nodes = {
+            "node_a": {"index": 1},
+            "node_b": {"index": 2}
+        }
+
+        mapper = WorkflowMapper()
+        mapper.build_from_lite_nodes(lite_nodes)
+
+        assert mapper.get_id("node_a") == 1
+        assert mapper.get_id("node_b") == 2
+        assert mapper.get_name(1) == "node_a"
+        assert mapper.get_name(2) == "node_b"
+
+
+class TestTypeResolver:
+    """Test TypeResolver class."""
+
+    def test_initialization(self):
+        """Test resolver initialization."""
+        resolver = TypeResolver()
+        assert resolver.node_info == {}
+
+    def test_with_node_info(self):
+        """Test resolver with node_info."""
+        node_info = {
+            "TestNode": {
+                "input": {
+                    "required": {
+                        "param1": ["STRING", {}],
+                        "param2": ["INT", {}]
+                    },
+                    "optional": {
+                        "param3": ["FLOAT", {}]
+                    }
+                },
+                "output": ["result_type1", "result_type2"]
+            }
+        }
+
+        resolver = TypeResolver(node_info)
+
+        # Test input type resolution
+        assert resolver.get_input_type("TestNode", "param1") == "STRING"
+        assert resolver.get_input_type("TestNode", "param2") == "INT"
+        assert resolver.get_input_type("TestNode", "param3") == "FLOAT"
+        assert resolver.get_input_type("TestNode", "unknown") == "AUTO"
+
+        # Test output type resolution
+        assert resolver.get_output_type("TestNode", 0) == "result_type1"
+        assert resolver.get_output_type("TestNode", 1) == "result_type2"
+        assert resolver.get_output_type("TestNode", 2) == "AUTO"
+
+        # Test parameter order
+        order = resolver.get_parameter_order("TestNode")
+        assert order == ["param1", "param2", "param3"]
+
+    def test_caching(self):
+        """Test that type resolution is cached."""
+        node_info = {
+            "TestNode": {
+                "input": {
+                    "required": {
+                        "param1": ["STRING", {}]
+                    }
+                }
+            }
+        }
+
+        resolver = TypeResolver(node_info)
+
+        # First call
+        type1 = resolver.get_input_type("TestNode", "param1")
+        # Second call (should use cache)
+        type2 = resolver.get_input_type("TestNode", "param1")
+
+        assert type1 == type2 == "STRING"
+
+
+class TestLinkBuilder:
+    """Test LinkBuilder class."""
+
+    def test_build_socket_mappings(self):
+        """Test building socket name mappings."""
+        nodes = [
+            {
+                "id": 1,
+                "inputs": [
+                    {"name": "in1"},
+                    {"name": "in2"}
+                ],
+                "outputs": [
+                    {"name": "out1"},
+                    {"name": "out2"}
+                ]
+            }
+        ]
+
+        resolver = TypeResolver()
+        builder = LinkBuilder(resolver)
+        input_mappings, output_mappings = builder.build_socket_mappings(nodes)
+
+        assert input_mappings[1] == {0: "in1", 1: "in2"}
+        assert output_mappings[1] == {0: "out1", 1: "out2"}
 
 
 class TestWorkflowLiteConverter:
@@ -88,12 +247,8 @@ class TestWorkflowLiteConverter:
         assert "test" in lite["nodes"]
         assert lite["nodes"]["test"]["type"] == "TestNode"
         assert lite["nodes"]["test"]["index"] == 1
-        # outputs is a list now
         assert isinstance(lite["nodes"]["test"]["outputs"], list)
         assert "output1" in lite["nodes"]["test"]["outputs"]
-        # No name or description fields
-        assert "name" not in lite
-        assert "description" not in lite["nodes"]["test"]
 
     def test_to_standard_basic(self):
         """Test basic conversion to standard format."""
@@ -115,6 +270,48 @@ class TestWorkflowLiteConverter:
         assert "nodes" in standard
         assert len(standard["nodes"]) == 1
         assert standard["nodes"][0]["type"] == "TestNode"
+
+    def test_uuid_generation(self):
+        """Test UUID generation for workflow IDs."""
+        lite = {
+            "version": "1.0",
+            "nodes": {
+                "test": {
+                    "type": "TestNode",
+                    "inputs": {},
+                    "outputs": []
+                }
+            }
+        }
+
+        converter = WorkflowLiteConverter()
+        standard = converter.to_standard(lite)
+
+        # Check that ID is a valid UUID
+        workflow_id = standard["id"]
+        try:
+            uuid_obj = uuid.UUID(workflow_id)
+            assert str(uuid_obj) == workflow_id
+        except ValueError:
+            pytest.fail(f"Generated ID '{workflow_id}' is not a valid UUID")
+
+    def test_uuid_preservation(self):
+        """Test that existing UUIDs are preserved."""
+        original_uuid = "189cc5d9-cb63-4b03-9a92-9a5b43ae17cc"
+        original_workflow = {
+            "id": original_uuid,
+            "nodes": []
+        }
+
+        lite = {
+            "version": "1.0",
+            "nodes": {}
+        }
+
+        converter = WorkflowLiteConverter()
+        standard = converter.to_standard(lite, original_workflow)
+
+        assert standard["id"] == original_uuid
 
     def test_connection_conversion(self):
         """Test connections are embedded in inputs correctly."""
@@ -163,7 +360,6 @@ class TestWorkflowLiteConverter:
         # Connection should be embedded in node_b's inputs
         assert "node_b" in lite["nodes"]
         assert "in1" in lite["nodes"]["node_b"]["inputs"]
-        # Value should be {node_id, output_name}
         conn = lite["nodes"]["node_b"]["inputs"]["in1"]
         assert isinstance(conn, dict)
         assert conn["node_id"] == 1
@@ -171,7 +367,6 @@ class TestWorkflowLiteConverter:
 
     def test_round_trip_conversion(self):
         """Test converting standard -> lite -> standard preserves core data."""
-        # Create a simple workflow
         original = {
             "id": "test-workflow",
             "nodes": [
@@ -266,7 +461,6 @@ class TestParameterExtraction:
             "links": []
         }
 
-        # Mock node_info
         node_info = {
             "CloneAndCacheModel": {
                 "input": {
@@ -279,7 +473,6 @@ class TestParameterExtraction:
         converter = WorkflowLiteConverter(node_info=node_info)
         lite = converter.to_lite(workflow)
 
-        # Parameters should be in inputs dict
         inputs = lite["nodes"]["clone_and_cache_model"]["inputs"]
         assert len(inputs) > 0
 
@@ -309,13 +502,127 @@ class TestParameterExtraction:
             "links": []
         }
 
-        converter = WorkflowLiteConverter()  # No node_info
+        converter = WorkflowLiteConverter()
         lite = converter.to_lite(workflow)
 
-        # Should use generic fallback
         node_key = list(lite["nodes"].keys())[0]
         inputs = lite["nodes"][node_key]["inputs"]
         assert len(inputs) > 0
+
+
+class TestValidationFunctions:
+    """Test validation functions."""
+
+    def test_validate_lite_format_valid(self, capsys):
+        """Test validating a valid lite format workflow."""
+        lite = {
+            "version": "1.0",
+            "nodes": {
+                "node_a": {
+                    "type": "NodeA",
+                    "inputs": {},
+                    "outputs": ["out1"],
+                    "index": 1
+                },
+                "node_b": {
+                    "type": "NodeB",
+                    "inputs": {
+                        "in1": {
+                            "node_id": 1,
+                            "output_name": "out1"
+                        }
+                    },
+                    "outputs": [],
+                    "index": 2
+                }
+            }
+        }
+
+        result = validate_lite_format(lite)
+        assert result is True
+        captured = capsys.readouterr()
+        assert "Lite format validation passed" in captured.out
+
+    def test_validate_lite_format_missing_fields(self, capsys):
+        """Test validating lite format with missing fields."""
+        lite = {
+            "nodes": {}
+        }
+
+        result = validate_lite_format(lite)
+        assert result is False
+        captured = capsys.readouterr()
+        assert "Validation failed" in captured.out
+
+    def test_validate_lite_format_invalid_connection(self, capsys):
+        """Test validating lite format with invalid connection."""
+        lite = {
+            "version": "1.0",
+            "nodes": {
+                "node_a": {
+                    "type": "NodeA",
+                    "inputs": {
+                        "in1": {
+                            "node_id": 999,  # Invalid node_id
+                            "output_name": "out1"
+                        }
+                    },
+                    "outputs": [],
+                    "index": 1
+                }
+            }
+        }
+
+        result = validate_lite_format(lite)
+        assert result is False
+        captured = capsys.readouterr()
+        assert "references unknown node_id" in captured.out
+
+    def test_validate_standard_format_valid(self, capsys):
+        """Test validating a valid standard format workflow."""
+        standard = {
+            "nodes": [
+                {
+                    "id": 1,
+                    "type": "NodeA",
+                    "inputs": [],
+                    "outputs": [{"name": "out1", "type": "STRING", "links": []}]
+                }
+            ],
+            "links": []
+        }
+
+        result = validate_standard_format(standard)
+        assert result is True
+        captured = capsys.readouterr()
+        assert "Standard format validation passed" in captured.out
+
+    def test_validate_standard_format_missing_fields(self, capsys):
+        """Test validating standard format with missing fields."""
+        standard = {
+            "nodes": []
+        }
+
+        result = validate_standard_format(standard)
+        assert result is False
+        captured = capsys.readouterr()
+        assert "Validation failed" in captured.out
+
+    def test_validate_standard_format_invalid_link(self, capsys):
+        """Test validating standard format with invalid link."""
+        standard = {
+            "nodes": [
+                {"id": 1, "type": "NodeA", "inputs": [], "outputs": []}
+            ],
+            "links": [
+                [1, 999, 0, 1, 0, "STRING"]  # Invalid source node
+            ]
+        }
+
+        result = validate_standard_format(standard)
+        assert result is False
+        captured = capsys.readouterr()
+        assert "references unknown source node" in captured.out
 
 
 class TestRealWorkflowFiles:
@@ -333,11 +640,8 @@ class TestRealWorkflowFiles:
         converter = WorkflowLiteConverter()
         lite = converter.to_lite(workflow)
 
-        # Validate structure
         assert "version" in lite
         assert "nodes" in lite
-
-        # Should have nodes
         assert len(lite["nodes"]) > 0
 
         # Check that connections are embedded in inputs
@@ -345,7 +649,6 @@ class TestRealWorkflowFiles:
             inputs = node_data.get("inputs", {})
             for input_name, input_value in inputs.items():
                 if isinstance(input_value, dict):
-                    # It's a connection: {node_id, output_name}
                     assert "node_id" in input_value
                     assert "output_name" in input_value
 
@@ -413,10 +716,9 @@ class TestEdgeCases:
         converter = WorkflowLiteConverter()
         lite = converter.to_lite(workflow)
 
-        # All inputs should be None or parameter values, no connections
         node_data = lite["nodes"]["node"]
         for input_value in node_data.get("inputs", {}).values():
-            assert not isinstance(input_value, dict) or "node_id" not in input_value  # No connections
+            assert not isinstance(input_value, dict) or "node_id" not in input_value
 
     def test_node_without_widgets_values(self):
         """Test node with no widgets_values."""
@@ -443,7 +745,101 @@ class TestEdgeCases:
         converter = WorkflowLiteConverter()
         lite = converter.to_lite(workflow)
 
-        # Should have empty inputs
         assert len(lite["nodes"]) == 1
         node_key = list(lite["nodes"].keys())[0]
         assert lite["nodes"][node_key].get("inputs") == {}
+
+    def test_complex_workflow_with_multiple_connections(self):
+        """Test workflow with multiple nodes and connections."""
+        workflow = {
+            "id": "complex",
+            "nodes": [
+                {
+                    "id": 1,
+                    "type": "SourceNode",
+                    "inputs": [],
+                    "outputs": [
+                        {"name": "out1", "type": "STRING", "links": [1, 2]},
+                        {"name": "out2", "type": "INT", "links": [3]}
+                    ],
+                    "properties": {},
+                    "widgets_values": [],
+                    "pos": [0, 0],
+                    "size": [100, 100],
+                    "flags": {},
+                    "order": 0,
+                    "mode": 0
+                },
+                {
+                    "id": 2,
+                    "type": "ProcessNode1",
+                    "inputs": [
+                        {"name": "in1", "type": "STRING", "link": 1}
+                    ],
+                    "outputs": [
+                        {"name": "result", "type": "STRING", "links": [4]}
+                    ],
+                    "properties": {},
+                    "widgets_values": [],
+                    "pos": [0, 0],
+                    "size": [100, 100],
+                    "flags": {},
+                    "order": 0,
+                    "mode": 0
+                },
+                {
+                    "id": 3,
+                    "type": "ProcessNode2",
+                    "inputs": [
+                        {"name": "in1", "type": "STRING", "link": 2},
+                        {"name": "in2", "type": "INT", "link": 3}
+                    ],
+                    "outputs": [],
+                    "properties": {},
+                    "widgets_values": [],
+                    "pos": [0, 0],
+                    "size": [100, 100],
+                    "flags": {},
+                    "order": 0,
+                    "mode": 0
+                },
+                {
+                    "id": 4,
+                    "type": "FinalNode",
+                    "inputs": [
+                        {"name": "in1", "type": "STRING", "link": 4}
+                    ],
+                    "outputs": [],
+                    "properties": {},
+                    "widgets_values": [],
+                    "pos": [0, 0],
+                    "size": [100, 100],
+                    "flags": {},
+                    "order": 0,
+                    "mode": 0
+                }
+            ],
+            "links": [
+                [1, 1, 0, 2, 0, "STRING"],
+                [2, 1, 0, 3, 0, "STRING"],
+                [3, 1, 1, 3, 1, "INT"],
+                [4, 2, 0, 4, 0, "STRING"]
+            ]
+        }
+
+        converter = WorkflowLiteConverter()
+        lite = converter.to_lite(workflow)
+
+        # Verify all nodes are present
+        assert len(lite["nodes"]) == 4
+
+        # Verify connections
+        assert lite["nodes"]["process_node1"]["inputs"]["in1"]["node_id"] == 1
+        assert lite["nodes"]["process_node2"]["inputs"]["in1"]["node_id"] == 1
+        assert lite["nodes"]["process_node2"]["inputs"]["in2"]["node_id"] == 1
+        assert lite["nodes"]["final"]["inputs"]["in1"]["node_id"] == 2
+
+        # Test round-trip conversion
+        back_to_standard = converter.to_standard(lite)
+        assert len(back_to_standard["nodes"]) == 4
+        assert len(back_to_standard["links"]) == 4

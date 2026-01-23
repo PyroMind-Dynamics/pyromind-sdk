@@ -32,7 +32,7 @@ from .client import (
 )
 
 # Export workflow functionality
-from .workflow import (
+from .client.workflow import (
     WorkflowLiteConverter,
     to_workflow_lite,
     to_workflow_standard,
