@@ -117,6 +117,7 @@
         "Node name for S&R": "Inference"
       },
       "widgets_values": [
+        "path/to/model",
         3000,
         1,
         "NVIDIA-L40S"
