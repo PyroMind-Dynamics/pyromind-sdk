@@ -34,6 +34,7 @@ from .client import (
 # Export workflow functionality
 from .client.workflow import (
     WorkflowLiteConverter,
+    LayoutGenerator,
     to_workflow_lite,
     to_workflow_standard,
 )
@@ -57,6 +58,7 @@ __all__ = [
     "PyroMindAPIClient",
     # Workflow functionality
     "WorkflowLiteConverter",
+    "LayoutGenerator",
     "to_workflow_lite",
     "to_workflow_standard",
 ]

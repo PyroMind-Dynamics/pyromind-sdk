@@ -12,8 +12,11 @@ Usage Examples:
     # Convert standard to lite format
     python workflow_cli.py convert workflow.json output.lite.json
 
-    # Convert lite to standard format
+    # Convert lite to standard format (with automatic node layout)
     python workflow_cli.py convert --to-standard workflow.lite.json output.json
+
+    # Convert lite to standard format (without auto layout, preserves [0,0] positions)
+    python workflow_cli.py convert --to-standard --no-auto-layout workflow.lite.json output.json
 
     # Validate a workflow (auto-detects format)
     python workflow_cli.py validate workflow.json
@@ -69,8 +72,11 @@ Examples:
   # Convert to lite format
   python workflow_cli.py convert workflow.json output.lite.json
 
-  # Convert to standard format
+  # Convert to standard format (with auto layout enabled by default)
   python workflow_cli.py convert --to-standard workflow.lite.json output.json
+
+  # Convert to standard format without auto layout
+  python workflow_cli.py convert --to-standard --no-auto-layout workflow.lite.json output.json
 
   # Validate workflow (auto-detects format)
   python workflow_cli.py validate workflow.json
@@ -103,6 +109,18 @@ Examples:
         "--with-node-info",
         action="store_true",
         help="Fetch node info from API for accurate parameter mapping"
+    )
+    parser.add_argument(
+        "--auto-layout",
+        action="store_true",
+        default=True,
+        help="Enable automatic node layout when converting to standard format (default: enabled)"
+    )
+    parser.add_argument(
+        "--no-auto-layout",
+        action="store_false",
+        dest="auto_layout",
+        help="Disable automatic node layout when converting to standard format"
     )
 
     args = parser.parse_args()
@@ -158,8 +176,18 @@ Examples:
         if args.with_node_info:
             node_info = fetch_node_info()
 
-        # Create converter and perform conversion
-        converter = WorkflowLiteConverter(node_info=node_info)
+        # Create converter with auto_layout setting
+        converter = WorkflowLiteConverter(
+            node_info=node_info,
+            auto_layout=args.auto_layout
+        )
+
+        # Show auto-layout status
+        if args.to_standard:
+            if args.auto_layout:
+                print("✓ Automatic node layout enabled")
+            else:
+                print("⚠ Automatic node layout disabled (nodes will have pos=[0,0])")
 
         try:
             if args.to_standard:

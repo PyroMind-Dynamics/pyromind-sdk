@@ -1,0 +1,421 @@
+{
+  "id": "00000000-0000-0000-0000-000000000000",
+  "revision": 0,
+  "last_node_id": 18,
+  "last_link_id": 16,
+  "nodes": [
+    {
+      "id": 4,
+      "type": "LoRAConfigNode",
+      "pos": [
+        100,
+        130
+      ],
+      "size": [
+        270,
+        154
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "lora_config",
+          "type": "STRING",
+          "links": [
+            13
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoRAConfigNode"
+      },
+      "widgets_values": [
+        8,
+        16,
+        0.1,
+        "k_proj,v_proj",
+        "CAUSAL_LM"
+      ]
+    },
+    {
+      "id": 10,
+      "type": "CloneAndCacheModel",
+      "pos": [
+        100,
+        414
+      ],
+      "size": [
+        270,
+        82
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "model_path",
+          "type": "MODEL",
+          "links": [
+            16
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CloneAndCacheModel"
+      },
+      "widgets_values": [
+        "Qwen/Qwen3-0.6B",
+        "/workspace/models/"
+      ]
+    },
+    {
+      "id": 11,
+      "type": "CloneAndCacheDataset",
+      "pos": [
+        100,
+        626
+      ],
+      "size": [
+        270,
+        82
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "dataset_path",
+          "type": "STRING",
+          "links": [
+            10
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CloneAndCacheDataset"
+      },
+      "widgets_values": [
+        "openai/gsm8k",
+        "/workspace/datasets/"
+      ]
+    },
+    {
+      "id": 12,
+      "type": "LoadLLMOrVLMDataset",
+      "pos": [
+        520.099609375,
+        130
+      ],
+      "size": [
+        270,
+        178
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "dataset_source",
+          "type": "STRING",
+          "widget": {
+            "name": "dataset_source"
+          },
+          "link": 10
+        }
+      ],
+      "outputs": [
+        {
+          "name": "dataset",
+          "type": "STRING",
+          "links": [
+            11
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadLLMOrVLMDataset"
+      },
+      "widgets_values": [
+        "",
+        "main/train-00000-of-00001.parquet",
+        "llm",
+        256,
+        "question",
+        "answer"
+      ]
+    },
+    {
+      "id": 14,
+      "type": "LLMSFTTrainingNode",
+      "pos": [
+        890.099609375,
+        130
+      ],
+      "size": [
+        300.76953125,
+        270
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model_path",
+          "type": "MODEL",
+          "link": 16
+        },
+        {
+          "name": "environment",
+          "shape": 7,
+          "type": "ENV",
+          "link": null
+        },
+        {
+          "name": "dataset",
+          "type": "STRING",
+          "widget": {
+            "name": "dataset"
+          },
+          "link": 11
+        },
+        {
+          "name": "training_standard_config",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "training_standard_config"
+          },
+          "link": 12
+        },
+        {
+          "name": "lora_config",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "lora_config"
+          },
+          "link": 13
+        },
+        {
+          "name": "training_advanced_config",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "training_advanced_config"
+          },
+          "link": 14
+        },
+        {
+          "name": "wandb_config",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "wandb_config"
+          },
+          "link": 15
+        }
+      ],
+      "outputs": [
+        {
+          "name": "llm_sft_checkpoint",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LLMSFTTrainingNode"
+      },
+      "widgets_values": [
+        "",
+        "qwen3",
+        "/workspace/checkpoints/llm_sft_lora",
+        1,
+        "NVIDIA-H100-NVL",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "id": 15,
+      "type": "TrainingStandardConfigNode",
+      "pos": [
+        100,
+        1050
+      ],
+      "size": [
+        320.099609375,
+        178
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "training_standard_config",
+          "type": "STRING",
+          "links": [
+            12
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TrainingStandardConfigNode"
+      },
+      "widgets_values": [
+        2,
+        2,
+        1,
+        0.000001,
+        128,
+        true
+      ]
+    },
+    {
+      "id": 13,
+      "type": "LoggingConfigNode",
+      "pos": [
+        100,
+        838
+      ],
+      "size": [
+        270,
+        82
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "wandb_config",
+          "type": "STRING",
+          "links": [
+            15
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoggingConfigNode"
+      },
+      "widgets_values": [
+        "aitv",
+        "your wandb access token"
+      ]
+    },
+    {
+      "id": 18,
+      "type": "TrainingAdvancedConfigNode",
+      "pos": [
+        528.5020141601562,
+        422.99627685546875
+      ],
+      "size": [
+        270,
+        202
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "training_advanced_config",
+          "type": "STRING",
+          "links": [
+            14
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TrainingAdvancedConfigNode"
+      },
+      "widgets_values": [
+        5,
+        100,
+        "constant_with_warmup",
+        0.001,
+        0.5,
+        "adamw_torch_fused",
+        "grpo"
+      ]
+    }
+  ],
+  "links": [
+    [
+      10,
+      11,
+      0,
+      12,
+      0,
+      "STRING"
+    ],
+    [
+      11,
+      12,
+      0,
+      14,
+      2,
+      "STRING"
+    ],
+    [
+      12,
+      15,
+      0,
+      14,
+      3,
+      "STRING"
+    ],
+    [
+      13,
+      4,
+      0,
+      14,
+      4,
+      "STRING"
+    ],
+    [
+      14,
+      18,
+      0,
+      14,
+      5,
+      "STRING"
+    ],
+    [
+      15,
+      13,
+      0,
+      14,
+      6,
+      "STRING"
+    ],
+    [
+      16,
+      10,
+      0,
+      14,
+      0,
+      "MODEL"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.7627768444385518,
+      "offset": [
+        201.7143234005312,
+        -17.64485969471163
+      ]
+    },
+    "frontendVersion": "1.20.0"
+  },
+  "version": 0.4
+}

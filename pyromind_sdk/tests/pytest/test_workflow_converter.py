@@ -389,7 +389,7 @@ class TestWorkflowLiteConverter:
             "links": []
         }
 
-        converter = WorkflowLiteConverter()
+        converter = WorkflowLiteConverter(auto_layout=False)  # Disable auto layout for this test
         lite = converter.to_lite(original)
         back_to_standard = converter.to_standard(lite)
 

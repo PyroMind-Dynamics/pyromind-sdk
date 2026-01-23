@@ -26,7 +26,8 @@ Architecture:
 
 import re
 import uuid
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, Set
+from collections import defaultdict, deque
 
 
 class WorkflowMapper:
@@ -76,14 +77,29 @@ class WorkflowMapper:
 
         Args:
             lite_nodes: Dictionary of {node_name: node_data} from lite format
+
+        Note:
+            If lite nodes don't have "index" field, assigns sequential IDs starting from 1.
+            This allows manual creation of lite workflows without needing to specify indices.
         """
         self.node_name_to_id = {}
+        next_id = 1
+
         for node_name, node_data in lite_nodes.items():
-            node_id = node_data.get("index", 0)
+            # Use existing index if available, otherwise assign sequential ID
+            if "index" in node_data and node_data["index"] > 0:
+                node_id = node_data["index"]
+            else:
+                node_id = next_id
+                next_id += 1
+
             self.node_name_to_id[node_name] = node_id
 
-        # Build reverse mapping
-        self.node_id_to_name = {v: k for k, v in self.node_name_to_id.items()}
+        # Build reverse mapping (handle potential duplicate IDs by using first occurrence)
+        self.node_id_to_name = {}
+        for node_name, node_id in self.node_name_to_id.items():
+            if node_id not in self.node_id_to_name:
+                self.node_id_to_name[node_id] = node_name
 
     def get_name(self, node_id: int, fallback: str = None) -> Optional[str]:
         """Get node name from ID."""
@@ -427,11 +443,26 @@ class LinkBuilder:
             inputs = node_data.get("inputs", {})
 
             for input_name, input_value in inputs.items():
-                if isinstance(input_value, dict) and "node_id" in input_value:
-                    source_id = input_value.get("node_id")
-                    output_name = input_value.get("output_name")
+                if isinstance(input_value, dict):
+                    # Support two connection formats:
+                    # 1. {"node_id": 123, "output_name": "model"} - numeric ID (from standard conversion)
+                    # 2. {"node": "node_name", "output": "output"} - node name (AI-friendly)
 
-                    if source_id is None:
+                    source_id = None
+                    output_name = None
+
+                    # Format 1: Numeric node_id (from standard conversion)
+                    if "node_id" in input_value:
+                        source_id = input_value.get("node_id")
+                        output_name = input_value.get("output_name")
+                    # Format 2: Node name (AI-friendly, for manual creation)
+                    elif "node" in input_value:
+                        source_node_name = input_value.get("node")
+                        output_name = input_value.get("output")
+                        # Look up node_id from node_name
+                        source_id = node_mapper.get_id(source_node_name)
+
+                    if source_id is None or output_name is None:
                         continue
 
                     # Get output index
@@ -518,6 +549,177 @@ class LinkBuilder:
         return "AUTO"
 
 
+class LayoutGenerator:
+    """
+    Automatic node layout generator for workflow visualization.
+
+    Generates node positions using topological sorting with a 16:9 aspect ratio layout.
+    Nodes are arranged left-to-right based on their dependency relationships.
+    """
+
+    # Default layout configuration
+    DEFAULT_NODE_WIDTH = 270
+    DEFAULT_NODE_HEIGHT = 82
+    HORIZONTAL_SPACING = 50   # Minimum space between columns (just enough to avoid overlap)
+    VERTICAL_SPACING = 50     # Minimum space between rows (just enough to avoid overlap)
+    MARGIN = 50               # Margin around the layout
+
+    def __init__(
+        self,
+        node_width: int = DEFAULT_NODE_WIDTH,
+        node_height: int = DEFAULT_NODE_HEIGHT,
+        horizontal_spacing: int = HORIZONTAL_SPACING,
+        vertical_spacing: int = VERTICAL_SPACING,
+        margin: int = MARGIN
+    ):
+        """
+        Initialize the layout generator.
+
+        Args:
+            node_width: Width of each node in pixels
+            node_height: Height of each node in pixels
+            horizontal_spacing: Horizontal spacing between node columns
+            vertical_spacing: Vertical spacing between node rows
+            margin: Margin around the entire layout
+        """
+        self.node_width = node_width
+        self.node_height = node_height
+        self.horizontal_spacing = horizontal_spacing
+        self.vertical_spacing = vertical_spacing
+        self.margin = margin
+
+    def generate_layout(
+        self,
+        lite_nodes: Dict[str, Dict]
+    ) -> Dict[str, Tuple[int, int]]:
+        """
+        Generate node positions using topological sort.
+
+        Args:
+            lite_nodes: Dictionary of {node_name: node_data} in lite format
+
+        Returns:
+            Dictionary mapping node_name to (x, y) position tuple
+        """
+        if not lite_nodes:
+            return {}
+
+        # Step 1: Build dependency graph
+        in_edges = defaultdict(set)  # node -> set of nodes it depends on
+        out_edges = defaultdict(set)  # node -> set of nodes that depend on it
+
+        for node_name, node_data in lite_nodes.items():
+            inputs = node_data.get("inputs", {})
+            for input_value in inputs.values():
+                if isinstance(input_value, dict) and "node_id" in input_value:
+                    # Find source node name from node_id
+                    source_id = input_value["node_id"]
+                    source_name = self._find_node_name_by_id(lite_nodes, source_id)
+                    if source_name:
+                        in_edges[node_name].add(source_name)
+                        out_edges[source_name].add(node_name)
+
+        # Step 2: Topological sort to get layer assignment
+        layers = self._topological_sort_layers(lite_nodes.keys(), in_edges, out_edges)
+
+        # Step 3: Calculate positions for each layer
+        positions = {}
+        
+        # Special case: if all nodes are in one layer (no dependencies), distribute them horizontally
+        if len(layers) == 1 and len(layers[0]) > 1:
+            # All nodes are independent - arrange horizontally
+            for col_idx, node_name in enumerate(layers[0]):
+                x = self.margin + col_idx * (self.node_width + self.horizontal_spacing)
+                y = self.margin
+                positions[node_name] = (x, y)
+        else:
+            # Normal case: nodes have dependencies - arrange by layers (columns)
+            for layer_idx, layer_nodes in enumerate(layers):
+                # Calculate x position for this layer (column)
+                x = self.margin + layer_idx * (self.node_width + self.horizontal_spacing)
+                
+                # Calculate y positions for nodes in this layer
+                # If multiple nodes in same layer, arrange them vertically
+                start_y = self.margin
+                
+                for row_idx, node_name in enumerate(layer_nodes):
+                    y = start_y + row_idx * (self.node_height + self.vertical_spacing)
+                    positions[node_name] = (x, y)
+
+        return positions
+
+    def _topological_sort_layers(
+        self,
+        node_names: Set[str],
+        in_edges: Dict[str, Set[str]],
+        out_edges: Dict[str, Set[str]]
+    ) -> List[List[str]]:
+        """
+        Perform topological sort and group nodes into layers.
+
+        Args:
+            node_names: Set of all node names
+            in_edges: Incoming edge dependencies
+            out_edges: Outgoing edge dependencies
+
+        Returns:
+            List of layers, where each layer is a list of node names at that level
+        """
+        # Calculate in-degrees
+        in_degree = {node: len(in_edges[node]) for node in node_names}
+
+        # Start with nodes that have no dependencies
+        queue = deque([node for node in node_names if in_degree[node] == 0])
+        layers = []
+        visited = set()
+
+        while queue:
+            # Process all nodes at current level
+            current_layer = []
+            current_layer_size = len(queue)
+
+            for _ in range(current_layer_size):
+                node = queue.popleft()
+                if node in visited:
+                    continue
+                visited.add(node)
+                current_layer.append(node)
+
+                # Reduce in-degree for dependent nodes
+                for dependent in out_edges[node]:
+                    in_degree[dependent] -= 1
+                    if in_degree[dependent] == 0 and dependent not in visited:
+                        queue.append(dependent)
+
+            if current_layer:
+                layers.append(current_layer)
+
+        # Handle cycles - remaining unvisited nodes
+        unvisited = node_names - visited
+        if unvisited:
+            # Add remaining nodes to the last layer
+            layers.append(list(unvisited))
+
+        return layers
+
+    @staticmethod
+    def _find_node_name_by_id(lite_nodes: Dict[str, Dict], node_id: int) -> Optional[str]:
+        """
+        Find node name by its ID in lite format.
+
+        Args:
+            lite_nodes: Dictionary of {node_name: node_data}
+            node_id: Node ID to search for
+
+        Returns:
+            Node name if found, None otherwise
+        """
+        for node_name, node_data in lite_nodes.items():
+            if node_data.get("index") == node_id:
+                return node_name
+        return None
+
+
 class WorkflowLiteConverter:
     """
     Universal converter between standard workflow and workflow_lite formats.
@@ -525,7 +727,7 @@ class WorkflowLiteConverter:
     Uses helper classes for better separation of concerns and maintainability.
     """
 
-    def __init__(self, node_info: Optional[Dict[str, Any]] = None):
+    def __init__(self, node_info: Optional[Dict[str, Any]] = None, auto_layout: bool = True):
         """
         Initialize the converter.
 
@@ -533,10 +735,13 @@ class WorkflowLiteConverter:
             node_info: Optional node information dictionary from get_node_info API.
                       If provided, parameter names will be accurately mapped.
                       If None, uses generic heuristic-based extraction.
+            auto_layout: If True, automatically generate node positions using topological sort.
+                        If False, use default positions [0, 0] for all nodes.
         """
         self.type_resolver = TypeResolver(node_info)
         self.link_builder = LinkBuilder(self.type_resolver)
         self.node_mapper = WorkflowMapper()
+        self.layout_generator = LayoutGenerator() if auto_layout else None
         self._next_node_id = 1
         self._next_link_id = 1
 
@@ -610,6 +815,11 @@ class WorkflowLiteConverter:
         # Build mappings
         self.node_mapper.build_from_lite_nodes(lite.get("nodes", {}))
 
+        # Generate automatic layout if enabled
+        node_positions = {}
+        if self.layout_generator:
+            node_positions = self.layout_generator.generate_layout(lite.get("nodes", {}))
+
         # Convert nodes
         nodes = []
         max_node_id = 0
@@ -619,7 +829,9 @@ class WorkflowLiteConverter:
                 node_id = max_node_id + 1
             max_node_id = max(max_node_id, node_id)
 
-            nodes.append(self._convert_node_to_standard(node_name, node_data, node_id))
+            # Get position for this node
+            pos = node_positions.get(node_name, [0, 0])
+            nodes.append(self._convert_node_to_standard(node_name, node_data, node_id, pos))
 
         # Convert connections to links
         links = self.link_builder.convert_lite_to_links(lite.get("nodes", {}), self.node_mapper)
@@ -790,7 +1002,8 @@ class WorkflowLiteConverter:
         self,
         node_name: str,
         lite_node: Dict,
-        node_id: int
+        node_id: int,
+        pos: Tuple[int, int] = (0, 0)
     ) -> Dict:
         """
         Convert a lite node to standard format.
@@ -799,6 +1012,7 @@ class WorkflowLiteConverter:
             node_name: Node name
             lite_node: Lite format node data
             node_id: Node ID
+            pos: Node position as (x, y) tuple
 
         Returns:
             Standard format node dictionary
@@ -813,10 +1027,13 @@ class WorkflowLiteConverter:
         # Build outputs array
         outputs_array = self._build_standard_outputs(node_type, outputs)
 
+        # Convert pos tuple to list if needed
+        pos_list = list(pos) if isinstance(pos, tuple) else pos
+
         return {
             "id": node_id,
             "type": node_type,
-            "pos": [0, 0],
+            "pos": pos_list,
             "size": [270, 82],
             "flags": {},
             "order": 0,

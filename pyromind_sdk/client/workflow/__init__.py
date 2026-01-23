@@ -11,6 +11,7 @@ from .converter import (
     WorkflowMapper,
     TypeResolver,
     LinkBuilder,
+    LayoutGenerator,
     to_workflow_lite,
     to_workflow_standard
 )
@@ -34,6 +35,7 @@ __all__ = [
     "WorkflowMapper",
     "TypeResolver",
     "LinkBuilder",
+    "LayoutGenerator",
     "to_workflow_lite",
     "to_workflow_standard",
     # Validator
