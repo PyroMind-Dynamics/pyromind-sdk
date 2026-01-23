@@ -31,6 +31,13 @@ from .client import (
     PyroMindAPIClient,
 )
 
+# Export workflow functionality
+from .workflow import (
+    WorkflowLiteConverter,
+    to_workflow_lite,
+    to_workflow_standard,
+)
+
 __all__ = [
     "__version__",
     # YAML nodes functionality
@@ -48,5 +55,9 @@ __all__ = [
     "TrainingClient",
     "StorageClient",
     "PyroMindAPIClient",
+    # Workflow functionality
+    "WorkflowLiteConverter",
+    "to_workflow_lite",
+    "to_workflow_standard",
 ]
 
