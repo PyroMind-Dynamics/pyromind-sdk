@@ -1,341 +1,883 @@
 """
 Workflow Validator
 
-This module provides functionality to validate workflows in both standard and lite formats.
+This module provides comprehensive validation for workflows in both standard and lite formats.
 
 Validation includes:
-- Checking required fields
-- Validating node IDs and connections
-- Verifying link references
-- Checking type compatibility
+- Schema validation (required fields, types, formats)
+- Link relationship validation (node existence, connections, cycles)
+- Type compatibility validation (input/output type matching)
+- Business logic validation (orphan nodes, duplicate IDs, etc.)
 """
 
-from typing import Dict, List, Any, Tuple, Optional
+import re
+import uuid
+from typing import Dict, List, Any, Tuple, Optional, Set
 from ..base import PyroMindAPIError
 
 
-class WorkflowValidationError(Exception):
-    """Exception raised when workflow validation fails."""
+class ValidationError(Exception):
+    """Base exception for validation errors."""
     pass
 
 
-def validate_workflow(workflow: dict, client, node_info: Optional[Dict] = None) -> Tuple[bool, List[str]]:
-    """
-    Validate workflow before sending to server.
+class SchemaValidationError(ValidationError):
+    """Exception raised when schema validation fails."""
+    pass
 
-    This function validates:
-    1. All nodes exist in node_info
-    2. Node input/output types match connections
-    3. Required inputs are provided
-    4. Connection links are valid
+
+class LinkValidationError(ValidationError):
+    """Exception raised when link validation fails."""
+    pass
+
+
+class TypeValidationError(ValidationError):
+    """Exception raised when type validation fails."""
+    pass
+
+
+def validate_workflow(
+    workflow: dict,
+    client=None,
+    node_info: Optional[Dict] = None,
+    strict: bool = False
+) -> Tuple[bool, List[str]]:
+    """
+    Validate workflow in standard format before sending to server.
+
+    Comprehensive validation including:
+    1. Schema validation
+    2. Node validation
+    3. Link validation
+    4. Type compatibility validation
 
     Args:
-        workflow: Workflow JSON dictionary
-        client: PyroMindAPIClient instance to use for fetching node_info.
-                Required parameter to avoid circular import issues.
-        node_info: Node information dictionary from get_node_info API.
-                  If None, will fetch it automatically using the provided client.
+        workflow: Workflow JSON dictionary in standard format
+        client: PyroMindAPIClient instance (optional, for fetching node_info)
+        node_info: Node information dictionary from get_node_info API
+        strict: If True, raise exception on first error instead of collecting all errors
 
     Returns:
         Tuple of (is_valid, error_messages)
-        - is_valid: True if workflow is valid, False otherwise
-        - error_messages: List of error messages if validation fails
 
     Raises:
-        WorkflowValidationError: If validation fails and strict mode is enabled
+        SchemaValidationError: If strict mode and schema validation fails
+        LinkValidationError: If strict mode and link validation fails
+        TypeValidationError: If strict mode and type validation fails
     """
     errors = []
 
-    # Get node_info if not provided
-    if node_info is None:
-        try:
-            node_info = client.training.get_node_info()
-        except PyroMindAPIError as e:
-            errors.append(f"Failed to get node info: {e.message}")
-            return False, errors
+    # Step 1: Schema validation
+    schema_errors = _validate_schema(workflow)
+    errors.extend(schema_errors)
 
-    if not node_info:
-        errors.append("No node information available")
+    if errors and strict:
+        raise SchemaValidationError(f"Schema validation failed: {errors[0]}")
+
+    # Step 2: Build mappings
+    try:
+        node_map = _build_node_map(workflow.get("nodes", []))
+        link_map = _build_link_map(workflow.get("links", []))
+    except Exception as e:
+        errors.append(f"Failed to build mappings: {str(e)}")
+        if strict:
+            raise SchemaValidationError(str(e))
         return False, errors
 
-    # Parse workflow nodes
-    workflow_nodes = workflow.get("nodes", [])
-    if not workflow_nodes:
-        errors.append("Workflow has no nodes")
-        return False, errors
+    # Step 3: Node validation
+    node_errors = _validate_nodes(workflow.get("nodes", []), node_map)
+    errors.extend(node_errors)
 
-    # Build node mapping: node_id -> node_data
-    node_map = {}
-    for node in workflow_nodes:
-        node_id = node.get("id")
-        if node_id is None:
-            errors.append("Found node without ID")
-            continue
-        node_map[node_id] = node
+    # Step 4: Link validation
+    link_errors = _validate_links(
+        workflow.get("links", []),
+        node_map,
+        link_map,
+        node_info
+    )
+    errors.extend(link_errors)
 
-    # Build link mapping: link_id -> (source_node_id, source_socket_index, target_node_id, target_socket_index, type)
-    links = workflow.get("links", [])
-    link_map = {}
-    for link in links:
-        if len(link) >= 6:
-            link_id = link[0]
-            source_node_id = link[1]
-            source_socket_index = link[2]
-            target_node_id = link[3]
-            target_socket_index = link[4]
-            link_type = link[5]
-            link_map[link_id] = (source_node_id, source_socket_index, target_node_id, target_socket_index, link_type)
+    # Step 5: Type compatibility validation (if node_info available)
+    if node_info:
+        type_errors = _validate_type_compatibility(workflow, node_map, link_map, node_info)
+        errors.extend(type_errors)
 
-    # Validate each node
-    for node_id, node in node_map.items():
-        node_type = node.get("type")
-        if not node_type:
-            errors.append(f"Node {node_id} has no type")
-            continue
-
-        # PrimitiveNode is a special node type that represents constants
-        # It doesn't need to be in node_info
-        if node_type == "PrimitiveNode":
-            continue
-
-        # Check if node type exists in node_info
-        if node_type not in node_info:
-            errors.append(f"Node {node_id} has unknown type '{node_type}' (not found in node_info)")
-            continue
-
-        node_def = node_info[node_type]
-        node_inputs_def = node_def.get('input', {})
-        node_outputs_def = node_def.get('output', [])
-
-        # Validate inputs
-        node_inputs = node.get("inputs", [])
-        for input_idx, input_socket in enumerate(node_inputs):
-            input_name = input_socket.get("name")
-            input_type = input_socket.get("type")
-            link_id = input_socket.get("link")
-
-            # If input has a link, validate the connection
-            if link_id is not None:
-                if link_id not in link_map:
-                    errors.append(f"Node {node_id} input '{input_name}' references invalid link {link_id}")
-                    continue
-
-                link_source_node_id, link_source_socket_idx, link_target_node_id, link_target_socket_idx, link_type = link_map[link_id]
-
-                # Verify target matches
-                if link_target_node_id != node_id:
-                    errors.append(f"Node {node_id} input '{input_name}' link {link_id} has mismatched target node")
-                    continue
-
-                # Verify source node exists
-                if link_source_node_id not in node_map:
-                    errors.append(f"Node {node_id} input '{input_name}' references non-existent source node {link_source_node_id}")
-                    continue
-
-                source_node = node_map[link_source_node_id]
-                source_outputs = source_node.get("outputs", [])
-
-                # Verify source output exists
-                if link_source_socket_idx >= len(source_outputs):
-                    errors.append(f"Node {node_id} input '{input_name}' references invalid source output index {link_source_socket_idx}")
-                    continue
-
-                source_output = source_outputs[link_source_socket_idx]
-                source_output_type = source_output.get("type")
-
-                # Verify link type matches source output type
-                if source_output_type != link_type:
-                    errors.append(
-                        f"Node {node_id} input '{input_name}' link {link_id} type mismatch: "
-                        f"link type is {link_type}, but source output type is {source_output_type}"
-                    )
-
-                # Verify input type matches expected from node definition
-                if input_name in node_inputs_def:
-                    expected_input_type = node_inputs_def[input_name]
-                    # Check if the source output type is compatible with expected input type
-                    if source_output_type != expected_input_type and expected_input_type != "*":
-                        # Allow some flexibility for COMBO types
-                        if not (source_output_type == "COMBO" and expected_input_type in ["STRING", "COMBO"]):
-                            if not (expected_input_type == "COMBO" and source_output_type in ["STRING", "COMBO"]):
-                                errors.append(
-                                    f"Node {node_id} input '{input_name}' type mismatch: "
-                                    f"expected {expected_input_type}, but receiving {source_output_type} from source"
-                                )
-            else:
-                # Input without link - check if it's required
-                if input_name in node_inputs_def:
-                    # Check if there's a widget value
-                    widgets_values = node.get("widgets_values", [])
-                    # This is a simplified check - in practice, you'd need to map widget names to values
-                    pass
-
-        # Validate outputs
-        node_outputs = node.get("outputs", [])
-        for output_idx, output_socket in enumerate(node_outputs):
-            output_name = output_socket.get("name")
-            output_type = output_socket.get("type")
-
-            # Check if output matches definition
-            if output_idx < len(node_outputs_def):
-                expected_output_type = node_outputs_def[output_idx]
-                if output_type != expected_output_type and expected_output_type != "*":
-                    errors.append(
-                        f"Node {node_id} output '{output_name}' type mismatch: "
-                        f"expected {expected_output_type}, got {output_type}"
-                    )
+    # Step 6: Business logic validation
+    business_errors = _validate_business_logic(workflow, node_map, link_map)
+    errors.extend(business_errors)
 
     is_valid = len(errors) == 0
     return is_valid, errors
 
 
-def validate_lite_format(data: Dict[str, Any]) -> bool:
+def validate_lite_format(
+    data: Dict[str, Any],
+    node_info: Optional[Dict] = None,
+    strict: bool = False
+) -> Tuple[bool, List[str]]:
     """
     Validate workflow in lite format.
 
-    Lite format structure:
-    {
-        "version": "1.0",
-        "nodes": {
-            "node_name": {
-                "type": "NodeType",
-                "inputs": {...},
-                "outputs": [...],
-                "index": <node_id>
-            }
-        }
-    }
+    Comprehensive validation including:
+    1. Schema validation
+    2. Node validation
+    3. Connection validation
+    4. Type compatibility (if node_info provided)
 
     Args:
         data: Workflow dictionary in lite format
+        node_info: Optional node information for type validation
+        strict: If True, raise exception on first error
 
     Returns:
-        True if validation passes, False otherwise
+        Tuple of (is_valid, error_messages)
     """
-    # Check required fields
-    required_fields = ["version", "nodes"]
-    missing = [f for f in required_fields if f not in data]
-    if missing:
-        print(f"✗ Validation failed: Missing fields: {', '.join(missing)}")
-        return False
+    errors = []
 
-    nodes = data["nodes"]
+    # Step 1: Schema validation
+    schema_errors = _validate_lite_schema(data)
+    errors.extend(schema_errors)
 
-    # Build node ID to name mapping
+    if errors and strict:
+        raise SchemaValidationError(f"Schema validation failed: {errors[0]}")
+
+    nodes = data.get("nodes", {})
+
+    # Step 2: Build node ID mapping
     node_ids = {}
+    node_ids_reverse = {}  # node_id -> node_name
     for node_name, node_data in nodes.items():
         if "index" in node_data:
             node_id = node_data["index"]
             if node_id in node_ids:
-                print(f"⚠ Warning: Duplicate node_id {node_id} found")
+                errors.append(f"Duplicate node_id {node_id} found in nodes '{node_ids[node_id]}' and '{node_name}'")
             node_ids[node_id] = node_name
+            node_ids_reverse[node_id] = node_name
 
-    # Validate connections (embedded in inputs)
+    # Step 3: Node validation
+    for node_name, node_data in nodes.items():
+        # Validate type field
+        node_type = node_data.get("type")
+        if not node_type:
+            errors.append(f"Node '{node_name}' is missing 'type' field")
+            continue
+
+        # Validate inputs
+        if "inputs" not in node_data:
+            errors.append(f"Node '{node_name}' is missing 'inputs' field")
+            continue
+
+        if not isinstance(node_data["inputs"], dict):
+            errors.append(f"Node '{node_name}' 'inputs' must be a dictionary, got {type(node_data['inputs']).__name__}")
+            continue
+
+        # Validate outputs
+        if "outputs" not in node_data:
+            errors.append(f"Node '{node_name}' is missing 'outputs' field")
+            continue
+
+        if not isinstance(node_data["outputs"], list):
+            errors.append(f"Node '{node_name}' 'outputs' must be a list, got {type(node_data['outputs']).__name__}")
+            continue
+
+    # Step 4: Connection validation
     for node_name, node_data in nodes.items():
         inputs = node_data.get("inputs", {})
 
         for input_name, input_value in inputs.items():
-            if isinstance(input_value, dict) and "node_id" in input_value:
-                source_id = input_value["node_id"]
-                if source_id not in node_ids:
-                    print(f"✗ Validation failed: Node '{node_name}' input '{input_name}' "
-                          f"references unknown node_id '{source_id}'")
-                    return False
+            if isinstance(input_value, dict):
+                # It's a connection
+                if "node_id" not in input_value:
+                    errors.append(f"Node '{node_name}' input '{input_name}' connection missing 'node_id'")
+                    continue
 
-                # Verify output_name exists in source node
-                source_node_name = node_ids[source_id]
+                if "output_name" not in input_value:
+                    errors.append(f"Node '{node_name}' input '{input_name}' connection missing 'output_name'")
+                    continue
+
+                source_id = input_value["node_id"]
+                output_name = input_value["output_name"]
+
+                # Check source node exists
+                if source_id not in node_ids_reverse:
+                    errors.append(f"Node '{node_name}' input '{input_name}' references unknown node_id '{source_id}'")
+                    continue
+
+                # Check output exists in source node
+                source_node_name = node_ids_reverse[source_id]
                 source_node = nodes[source_node_name]
-                output_name = input_value.get("output_name")
                 source_outputs = source_node.get("outputs", [])
 
                 if output_name and output_name not in source_outputs:
-                    print(f"⚠ Warning: Node '{node_name}' input '{input_name}' "
-                          f"references unknown output '{output_name}' in node '{source_node_name}'")
+                    errors.append(f"Node '{node_name}' input '{input_name}' references unknown output '{output_name}' in node '{source_node_name}'")
+                    continue
 
-    # Validate version
+                # Type compatibility check (if node_info available)
+                if node_info and output_name:
+                    type_errors = _validate_lite_connection_types(
+                        node_name, input_name, node_data,
+                        source_node_name, output_name, source_node,
+                        node_info
+                    )
+                    errors.extend(type_errors)
+
+    # Step 5: Check for orphan nodes (no connections in or out)
+    connected_nodes = set()
+    for node_name, node_data in nodes.items():
+        inputs = node_data.get("inputs", {})
+        for input_value in inputs.values():
+            if isinstance(input_value, dict) and "node_id" in input_value:
+                source_id = input_value["node_id"]
+                connected_nodes.add(node_name)
+                if source_id in node_ids_reverse:
+                    connected_nodes.add(node_ids_reverse[source_id])
+
+    orphan_nodes = [name for name in nodes.keys() if name not in connected_nodes and len(nodes) > 1]
+    if orphan_nodes:
+        errors.append(f"Warning: Orphan nodes found (no connections): {', '.join(orphan_nodes)}")
+
+    # Step 6: Validate version
     version = data.get("version")
     if version != "1.0":
-        print(f"⚠ Warning: Unknown version '{version}', expected '1.0'")
+        errors.append(f"Warning: Unknown version '{version}', expected '1.0'")
 
-    print(f"✓ Lite format validation passed ({len(nodes)} nodes)")
-    return True
+    is_valid = not any(e for e in errors if not e.startswith("Warning:"))
+    return is_valid, errors
 
 
-def validate_standard_format(data: Dict[str, Any]) -> bool:
+def validate_standard_format(
+    data: Dict[str, Any],
+    node_info: Optional[Dict] = None,
+    strict: bool = False
+) -> Tuple[bool, List[str]]:
     """
     Validate workflow in standard format.
 
-    Standard format structure:
-    {
-        "id": "...",
-        "nodes": [...],
-        "links": [[link_id, source_id, source_idx, target_id, target_idx, type], ...]
-    }
+    Comprehensive validation including:
+    1. Schema validation
+    2. Node validation
+    3. Link validation
+    4. Type compatibility
 
     Args:
         data: Workflow dictionary in standard format
+        node_info: Optional node information for type validation
+        strict: If True, raise exception on first error
 
     Returns:
-        True if validation passes, False otherwise
+        Tuple of (is_valid, error_messages)
     """
-    # Check required fields
-    required_fields = ["nodes", "links"]
-    missing = [f for f in required_fields if f not in data]
-    if missing:
-        print(f"✗ Validation failed: Missing fields: {', '.join(missing)}")
-        return False
+    errors = []
 
-    nodes = data["nodes"]
-    links = data["links"]
+    # Step 1: Schema validation
+    schema_errors = _validate_standard_schema(data)
+    errors.extend(schema_errors)
 
-    # Build node map
-    node_map = {}
-    node_id_set = set()
+    if errors and strict:
+        raise SchemaValidationError(f"Schema validation failed: {errors[0]}")
+
+    nodes = data.get("nodes", [])
+    links = data.get("links", [])
+
+    # Step 2: Build mappings
+    try:
+        node_map = _build_node_map(nodes)
+        link_map = _build_link_map(links)
+    except Exception as e:
+        errors.append(f"Failed to build mappings: {str(e)}")
+        if strict:
+            raise SchemaValidationError(str(e))
+        return False, errors
+
+    # Step 3: Node validation
+    node_errors = _validate_nodes(nodes, node_map)
+    errors.extend(node_errors)
+
+    # Step 4: Link validation
+    link_errors = _validate_links(links, node_map, link_map, node_info)
+    errors.extend(link_errors)
+
+    # Step 5: Type compatibility validation
+    if node_info:
+        type_errors = _validate_type_compatibility(data, node_map, link_map, node_info)
+        errors.extend(type_errors)
+
+    # Step 6: Business logic validation
+    business_errors = _validate_business_logic(data, node_map, link_map)
+    errors.extend(business_errors)
+
+    is_valid = not any(e for e in errors if not e.startswith("Warning:"))
+    return is_valid, errors
+
+
+# ============================================================================
+# Schema Validation
+# ============================================================================
+
+def _validate_schema(workflow: Dict[str, Any]) -> List[str]:
+    """Validate standard workflow schema."""
+    errors = []
+
+    # Check required top-level fields
+    required_fields = ["id", "nodes", "links"]
+    for field in required_fields:
+        if field not in workflow:
+            errors.append(f"Missing required field: '{field}'")
+
+    # Validate workflow ID (should be UUID or string)
+    if "id" in workflow:
+        workflow_id = workflow["id"]
+        if not isinstance(workflow_id, str):
+            errors.append(f"Workflow 'id' must be a string, got {type(workflow_id).__name__}")
+        elif workflow_id != "workflow" and not _is_valid_uuid(workflow_id):
+            errors.append(f"Warning: Workflow 'id' should be a UUID format, got '{workflow_id}'")
+
+    # Validate nodes is a list
+    if "nodes" in workflow:
+        nodes = workflow["nodes"]
+        if not isinstance(nodes, list):
+            errors.append(f"'nodes' must be a list, got {type(nodes).__name__}")
+
+    # Validate links is a list
+    if "links" in workflow:
+        links = workflow["links"]
+        if not isinstance(links, list):
+            errors.append(f"'links' must be a list, got {type(links).__name__}")
+
+    return errors
+
+
+def _validate_lite_schema(data: Dict[str, Any]) -> List[str]:
+    """Validate lite workflow schema."""
+    errors = []
+
+    # Check required top-level fields
+    required_fields = ["version", "nodes"]
+    for field in required_fields:
+        if field not in data:
+            errors.append(f"Missing required field: '{field}'")
+
+    # Validate version
+    if "version" in data:
+        version = data["version"]
+        if not isinstance(version, str):
+            errors.append(f"'version' must be a string, got {type(version).__name__}")
+        elif version != "1.0":
+            errors.append(f"Warning: Unknown version '{version}', expected '1.0'")
+
+    # Validate nodes is a dict
+    if "nodes" in data:
+        nodes = data["nodes"]
+        if not isinstance(nodes, dict):
+            errors.append(f"'nodes' must be a dictionary, got {type(nodes).__name__}")
+
+    return errors
+
+
+def _validate_standard_schema(data: Dict[str, Any]) -> List[str]:
+    """Validate standard format schema (alias for consistency)."""
+    return _validate_schema(data)
+
+
+# ============================================================================
+# Node Validation
+# ============================================================================
+
+def _validate_nodes(nodes: List[Dict], node_map: Dict[int, Dict]) -> List[str]:
+    """Validate nodes structure and content."""
+    errors = []
+
     for node in nodes:
         node_id = node.get("id")
         if node_id is None:
-            print(f"✗ Validation failed: Found node without ID")
-            return False
+            errors.append("Found node without 'id' field")
+            continue
 
-        if node_id in node_id_set:
-            print(f"⚠ Warning: Duplicate node_id {node_id} found")
+        # Validate type
+        node_type = node.get("type")
+        if not node_type:
+            errors.append(f"Node {node_id} is missing 'type' field")
+        elif not isinstance(node_type, str):
+            errors.append(f"Node {node_id} 'type' must be a string, got {type(node_type).__name__}")
 
-        node_id_set.add(node_id)
-        node_map[node_id] = node
+        # Validate inputs
+        if "inputs" in node:
+            inputs = node["inputs"]
+            if not isinstance(inputs, list):
+                errors.append(f"Node {node_id} 'inputs' must be a list, got {type(inputs).__name__}")
+            else:
+                for idx, inp in enumerate(inputs):
+                    if not isinstance(inp, dict):
+                        errors.append(f"Node {node_id} input at index {idx} must be a dictionary")
+                        continue
 
-    # Validate links
+                    if "name" not in inp:
+                        errors.append(f"Node {node_id} input at index {idx} is missing 'name' field")
+
+                    if "type" not in inp:
+                        errors.append(f"Node {node_id} input '{inp.get('name', idx)}' is missing 'type' field")
+
+        # Validate outputs
+        if "outputs" in node:
+            outputs = node["outputs"]
+            if not isinstance(outputs, list):
+                errors.append(f"Node {node_id} 'outputs' must be a list, got {type(outputs).__name__}")
+            else:
+                for idx, out in enumerate(outputs):
+                    if not isinstance(out, dict):
+                        errors.append(f"Node {node_id} output at index {idx} must be a dictionary")
+                        continue
+
+                    if "name" not in out:
+                        errors.append(f"Node {node_id} output at index {idx} is missing 'name' field")
+
+                    if "type" not in out:
+                        errors.append(f"Node {node_id} output '{out.get('name', idx)}' is missing 'type' field")
+
+                    # Validate links field
+                    if "links" in out and not isinstance(out["links"], list):
+                        errors.append(f"Node {node_id} output '{out.get('name')}' 'links' must be a list")
+
+        # Validate widgets_values
+        if "widgets_values" in node:
+            widgets_values = node["widgets_values"]
+            if not isinstance(widgets_values, list):
+                errors.append(f"Node {node_id} 'widgets_values' must be a list, got {type(widgets_values).__name__}")
+
+    return errors
+
+
+# ============================================================================
+# Link Validation
+# ============================================================================
+
+def _validate_links(
+    links: List[List],
+    node_map: Dict[int, Dict],
+    link_map: Dict[int, Tuple],
+    node_info: Optional[Dict] = None
+) -> List[str]:
+    """Validate links structure and relationships."""
+    errors = []
+    link_ids = set()
+
     for link in links:
+        # Validate link format
         if len(link) < 6:
-            print(f"✗ Validation failed: Invalid link format (expected 6 elements, got {len(link)})")
-            return False
+            errors.append(f"Link {link} has invalid format (expected 6 elements, got {len(link)})")
+            continue
 
-        link_id, source_id, source_idx, target_id, target_idx = link[:5]
+        link_id, source_id, source_idx, target_id, target_idx, link_type = link[:6]
 
-        # Check source node exists
+        # Validate link_id uniqueness
+        if link_id in link_ids:
+            errors.append(f"Duplicate link_id {link_id} found")
+        link_ids.add(link_id)
+
+        # Validate source node exists
         if source_id not in node_map:
-            print(f"✗ Validation failed: Link {link_id} references unknown source node {source_id}")
-            return False
+            errors.append(f"Link {link_id} references unknown source node {source_id}")
+            continue
 
-        # Check target node exists
+        # Validate target node exists
         if target_id not in node_map:
-            print(f"✗ Validation failed: Link {link_id} references unknown target node {target_id}")
-            return False
+            errors.append(f"Link {link_id} references unknown target node {target_id}")
+            continue
 
-        # Check source output exists
+        # Validate source output exists
         source_node = node_map[source_id]
         source_outputs = source_node.get("outputs", [])
         if source_idx >= len(source_outputs):
-            print(f"✗ Validation failed: Link {link_id} references invalid source output index "
-                  f"{source_idx} (node has {len(source_outputs)} outputs)")
-            return False
+            errors.append(
+                f"Link {link_id} references invalid source output index {source_idx} "
+                f"(node {source_id} has {len(source_outputs)} outputs)"
+            )
+            continue
 
-        # Check target input exists
+        # Validate target input exists
         target_node = node_map[target_id]
         target_inputs = target_node.get("inputs", [])
         if target_idx >= len(target_inputs):
-            print(f"✗ Validation failed: Link {link_id} references invalid target input index "
-                  f"{target_idx} (node has {len(target_inputs)} inputs)")
-            return False
+            errors.append(
+                f"Link {link_id} references invalid target input index {target_idx} "
+                f"(node {target_id} has {len(target_inputs)} inputs)"
+            )
+            continue
 
-    print(f"✓ Standard format validation passed ({len(nodes)} nodes, {len(links)} links)")
-    return True
+        # Validate link type matches source output type
+        source_output = source_outputs[source_idx]
+        source_output_type = source_output.get("type", "AUTO")
+        if link_type != source_output_type and link_type != "AUTO" and source_output_type != "*":
+            errors.append(
+                f"Link {link_id} type mismatch: link type is '{link_type}' "
+                f"but source output type is '{source_output_type}'"
+            )
+
+        # Validate link type is compatible with target input type
+        target_input = target_inputs[target_idx]
+        target_input_type = target_input.get("type", "AUTO")
+        if link_type != target_input_type and link_type != "AUTO" and target_input_type != "*":
+            # Allow some type conversions
+            if not _is_type_compatible(link_type, target_input_type):
+                errors.append(
+                    f"Link {link_id} type incompatibility: link type '{link_type}' "
+                    f"is not compatible with target input type '{target_input_type}'"
+                )
+
+    return errors
+
+
+def _validate_lite_connection_types(
+    target_node_name: str,
+    target_input_name: str,
+    target_node: Dict,
+    source_node_name: str,
+    source_output_name: str,
+    source_node: Dict,
+    node_info: Dict
+) -> List[str]:
+    """Validate type compatibility for lite format connections."""
+    errors = []
+
+    target_node_type = target_node.get("type")
+    source_node_type = source_node.get("type")
+
+    # Get target input type from node_info
+    target_input_type = None
+    if target_node_type in node_info:
+        input_defs = node_info[target_node_type].get("input", {})
+        for category in ["required", "optional"]:
+            if category in input_defs and target_input_name in input_defs[category]:
+                param_def = input_defs[category][target_input_name]
+                if isinstance(param_def, list) and len(param_def) > 0:
+                    target_input_type = param_def[0]
+                    if isinstance(target_input_type, list):
+                        target_input_type = "STRING"  # Enum type
+                break
+
+    # Get source output type from node_info
+    source_output_type = None
+    if source_node_type in node_info:
+        output_types = node_info[source_node_type].get("output", [])
+        output_names = node_info[source_node_type].get("output_name", [])
+
+        if source_output_name in output_names:
+            name_idx = output_names.index(source_output_name)
+            if name_idx < len(output_types):
+                source_output_type = output_types[name_idx]
+        elif len(output_types) > 0:
+            source_output_type = output_types[0]  # Use first output as fallback
+
+    # Check compatibility
+    if target_input_type and source_output_type:
+        if not _is_type_compatible(source_output_type, target_input_type):
+            errors.append(
+                f"Type incompatibility: {source_node_name}.{source_output_name} ({source_output_type}) "
+                f"-> {target_node_name}.{target_input_name} ({target_input_type})"
+            )
+
+    return errors
+
+
+# ============================================================================
+# Type Compatibility Validation
+# ============================================================================
+
+def _validate_type_compatibility(
+    workflow: Dict,
+    node_map: Dict[int, Dict],
+    link_map: Dict,
+    node_info: Dict
+) -> List[str]:
+    """Validate type compatibility across all connections."""
+    errors = []
+
+    for link in workflow.get("links", []):
+        if len(link) < 6:
+            continue
+
+        link_id, source_id, source_idx, target_id, target_idx, link_type = link[:6]
+
+        if source_id not in node_map or target_id not in node_map:
+            continue
+
+        source_node = node_map[source_id]
+        target_node = node_map[target_id]
+        source_node_type = source_node.get("type")
+        target_node_type = target_node.get("type")
+
+        # Skip if node types not in node_info
+        if source_node_type not in node_info or target_node_type not in node_info:
+            continue
+
+        # Get expected types from node_info
+        source_outputs = node_info[source_node_type].get("output", [])
+        target_inputs = node_info[target_node_type].get("input", {})
+
+        if source_idx >= len(source_outputs):
+            continue
+
+        source_expected_type = source_outputs[source_idx]
+
+        # Get target input definition
+        target_input_name = None
+        target_inputs_list = target_node.get("inputs", [])
+        if target_idx < len(target_inputs_list):
+            target_input_name = target_inputs_list[target_idx].get("name")
+
+        target_expected_type = "AUTO"
+        if target_input_name:
+            for category in ["required", "optional"]:
+                if category in target_inputs and target_input_name in target_inputs[category]:
+                    param_def = target_inputs[category][target_input_name]
+                    if isinstance(param_def, list) and len(param_def) > 0:
+                        target_expected_type = param_def[0]
+                        if isinstance(target_expected_type, list):
+                            target_expected_type = "STRING"
+                    break
+
+        # Validate type compatibility
+        if not _is_type_compatible(source_expected_type, target_expected_type):
+            errors.append(
+                f"Link {link_id}: Type mismatch between source ({source_expected_type}) "
+                f"and target ({target_expected_type})"
+            )
+
+    return errors
+
+
+def _is_type_compatible(source_type: str, target_type: str) -> bool:
+    """Check if source type is compatible with target type."""
+    # Same types are always compatible
+    if source_type == target_type:
+        return True
+
+    # AUTO is compatible with everything
+    if source_type == "AUTO" or target_type == "AUTO":
+        return True
+
+    # Wildcard types
+    if source_type == "*" or target_type == "*":
+        return True
+
+    # COMBO can be used as STRING
+    if source_type == "COMBO" and target_type == "STRING":
+        return True
+    if source_type == "STRING" and target_type == "COMBO":
+        return True
+
+    # Model types
+    model_types = ["MODEL", "VAE", "LATENT", "CLIP", "STYLE_MODEL"]
+    if source_type in model_types and target_type in model_types:
+        return True
+
+    # Number types
+    number_types = ["INT", "FLOAT", "NUMBER"]
+    if source_type in number_types and target_type in number_types:
+        return True
+
+    return False
+
+
+# ============================================================================
+# Business Logic Validation
+# ============================================================================
+
+def _validate_business_logic(
+    workflow: Dict,
+    node_map: Dict[int, Dict],
+    link_map: Dict
+) -> List[str]:
+    """Validate business logic rules."""
+    errors = []
+
+    # Check for orphan nodes (no connections in or out)
+    connected_nodes = set()
+
+    for link in workflow.get("links", []):
+        if len(link) >= 6:
+            _, source_id, _, target_id, _, _ = link[:6]
+            connected_nodes.add(source_id)
+            connected_nodes.add(target_id)
+
+    orphan_nodes = [
+        node_id for node_id in node_map.keys()
+        if node_id not in connected_nodes and len(node_map) > 1
+    ]
+
+    if orphan_nodes:
+        errors.append(f"Warning: Orphan nodes found (no connections): {orphan_nodes}")
+
+    # Check for self-loops (nodes that connect to themselves)
+    for link in workflow.get("links", []):
+        if len(link) >= 6:
+            link_id, source_id, _, target_id, _, _ = link[:6]
+            if source_id == target_id:
+                errors.append(f"Warning: Link {link_id} is a self-loop (node {source_id} connects to itself)")
+
+    # Check for cycles (detect circular dependencies)
+    cycles = _detect_cycles(node_map, link_map)
+    if cycles:
+        errors.append(f"Warning: Circular dependencies detected: {cycles}")
+
+    # Check last_node_id and last_link_id consistency
+    nodes = workflow.get("nodes", [])
+    links = workflow.get("links", [])
+
+    if nodes:
+        max_node_id = max(node.get("id", 0) for node in nodes)
+        if workflow.get("last_node_id", 0) < max_node_id:
+            errors.append(
+                f"Warning: last_node_id ({workflow.get('last_node_id')}) "
+                f"is less than max node_id ({max_node_id})"
+            )
+
+    if links:
+        max_link_id = max(link[0] for link in links if len(link) > 0)
+        if workflow.get("last_link_id", 0) < max_link_id:
+            errors.append(
+                f"Warning: last_link_id ({workflow.get('last_link_id')}) "
+                f"is less than max link_id ({max_link_id})"
+            )
+
+    return errors
+
+
+def _detect_cycles(
+    node_map: Dict[int, Dict],
+    link_map: Dict
+) -> List[List[int]]:
+    """Detect circular dependencies using DFS."""
+    cycles = []
+    visited = set()
+    rec_stack = set()
+
+    def dfs(node_id: int, path: List[int]) -> bool:
+        """DFS to detect cycles."""
+        visited.add(node_id)
+        rec_stack.add(node_id)
+        path.append(node_id)
+
+        # Check all outgoing links from this node
+        for link in link_map.values():
+            _, source_id, _, target_id, _, _ = link
+            if source_id == node_id:
+                if target_id not in visited:
+                    if dfs(target_id, path):
+                        return True
+                elif target_id in rec_stack:
+                    # Found a cycle
+                    cycle_start = path.index(target_id)
+                    cycle = path[cycle_start:] + [target_id]
+                    cycles.append(cycle)
+                    return True
+
+        path.pop()
+        rec_stack.remove(node_id)
+        return False
+
+    for node_id in node_map.keys():
+        if node_id not in visited:
+            if dfs(node_id, []):
+                break
+
+    return cycles
+
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+def _build_node_map(nodes: List[Dict]) -> Dict[int, Dict]:
+    """Build mapping from node ID to node data."""
+    node_map = {}
+    for node in nodes:
+        node_id = node.get("id")
+        if node_id is not None:
+            node_map[node_id] = node
+    return node_map
+
+
+def _build_link_map(links: List[List]) -> Dict[int, Tuple]:
+    """Build mapping from link ID to link data."""
+    link_map = {}
+    for link in links:
+        if len(link) >= 6:
+            link_id = link[0]
+            link_map[link_id] = tuple(link[:6])
+    return link_map
+
+
+def _is_valid_uuid(id_string: str) -> bool:
+    """Check if a string is a valid UUID."""
+    try:
+        uuid.UUID(id_string)
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
+# ============================================================================
+# Legacy Functions (for backward compatibility)
+# ============================================================================
+
+def validate_workflow_lite(
+    data: Dict[str, Any],
+    node_info: Optional[Dict] = None
+) -> bool:
+    """
+    Legacy function to validate lite format.
+
+    Deprecated: Use validate_lite_format() instead.
+    """
+    is_valid, errors = validate_lite_format(data, node_info)
+    for error in errors:
+        if not error.startswith("Warning:"):
+            print(f"✗ {error}")
+        else:
+            print(f"⚠ {error}")
+
+    if is_valid:
+        print(f"✓ Lite format validation passed ({len(data.get('nodes', {}))} nodes)")
+    else:
+        print("✗ Lite format validation failed")
+
+    return is_valid
+
+
+def validate_workflow_standard(
+    data: Dict[str, Any],
+    node_info: Optional[Dict] = None
+) -> bool:
+    """
+    Legacy function to validate standard format.
+
+    Deprecated: Use validate_standard_format() instead.
+    """
+    is_valid, errors = validate_standard_format(data, node_info)
+    for error in errors:
+        if not error.startswith("Warning:"):
+            print(f"✗ {error}")
+        else:
+            print(f"⚠ {error}")
+
+    if is_valid:
+        print(f"✓ Standard format validation passed ({len(data.get('nodes', []))} nodes, {len(data.get('links', []))} links)")
+    else:
+        print("✗ Standard format validation failed")
+
+    return is_valid
+
+
+# Legacy function for backward compatibility (renamed to avoid conflict)
+def validate_workflow_legacy(
+    workflow: dict,
+    client,
+    node_info: Optional[Dict] = None
+) -> Tuple[bool, List[str]]:
+    """
+    Legacy validate workflow function (backward compatibility).
+
+    This function wraps the new validate_workflow function.
+    """
+    return validate_workflow(workflow, client, node_info)

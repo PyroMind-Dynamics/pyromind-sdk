@@ -45,7 +45,7 @@ Repository = "https://github.com/pyromind/pyromind-sdk"
 Issues = "https://github.com/pyromind/pyromind-sdk/issues"
 
 [tool.setuptools]
-packages = ["pyromind_sdk", "pyromind_sdk.common", "pyromind_sdk.nodes", "pyromind_sdk.tests", "pyromind_sdk.client"]
+packages = ["pyromind_sdk", "pyromind_sdk.common", "pyromind_sdk.nodes", "pyromind_sdk.tests", "pyromind_sdk.client", "pyromind_sdk.client.workflow"]
 
 [tool.setuptools.package-data]
 pyromind_sdk = ["*.md"]

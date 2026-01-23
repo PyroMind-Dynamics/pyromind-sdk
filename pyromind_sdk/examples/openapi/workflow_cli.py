@@ -34,7 +34,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 # Import from SDK
 from pyromind_sdk import PyroMindAPIClient, WorkflowLiteConverter
-from pyromind_sdk.client.workflow import validate_lite_format, validate_standard_format
+from pyromind_sdk.client.workflow import (
+    validate_lite_format,
+    validate_standard_format
+)
 
 
 def fetch_node_info() -> Dict[str, Any]:
@@ -127,11 +130,22 @@ Examples:
         is_lite_format = isinstance(nodes, dict)
 
         if is_lite_format:
-            success = validate_lite_format(data)
+            is_valid, errors = validate_lite_format(data)
         else:
-            success = validate_standard_format(data)
+            is_valid, errors = validate_standard_format(data)
 
-        sys.exit(0 if success else 1)
+        # Print all errors
+        for error in errors:
+            if error.startswith("Warning:"):
+                print(f"⚠ {error}")
+            else:
+                print(f"✗ {error}")
+
+        # Exit with appropriate code
+        if is_valid:
+            sys.exit(0)
+        else:
+            sys.exit(1)
 
     # Handle convert command
     if args.command == "convert":

@@ -18,7 +18,7 @@ from typing import Optional, Dict, List, Set, Tuple
 
 from pyromind_sdk import PyroMindAPIClient, PyroMindAPIError
 from pyromind_sdk.client.models import TrainingTaskCreateRequest
-from pyromind_sdk.client import validate_workflow, WorkflowValidationError
+from pyromind_sdk.client import validate_workflow, ValidationError
 
 
 def _format_datetime(dt) -> str:
@@ -78,7 +78,7 @@ def create_training_task_example(workflow_path: Path, task_name: str = "example-
                     print("✗ Workflow validation failed:")
                     for error in errors:
                         print(f"  - {error}")
-                    raise WorkflowValidationError(f"Workflow validation failed with {len(errors)} error(s)")
+                    raise ValidationError(f"Workflow validation failed with {len(errors)} error(s)")
                 print(f"✓ Workflow validation passed ({len(workflow.get('nodes', []))} nodes)")
             except PyroMindAPIError as e:
                 print(f"⚠ Warning: Failed to get node info for validation: {e.message}")
@@ -89,7 +89,7 @@ def create_training_task_example(workflow_path: Path, task_name: str = "example-
         )
         print(f"✓ Training task created: {task.task_id} ({task.name}) - {task.status}")
         return task.task_id
-    except (PyroMindAPIError, FileNotFoundError, WorkflowValidationError) as e:
+    except (PyroMindAPIError, FileNotFoundError, ValidationError) as e:
         print(f"✗ Failed to create training task: {e}")
         return None
     finally:
