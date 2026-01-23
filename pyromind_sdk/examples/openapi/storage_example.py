@@ -7,7 +7,7 @@ This example demonstrates how to use the StorageClient for file operations.
 The storage credentials can be provided via:
 1. Environment variables (recommended):
    - PYROMIND_STORAGE_ENDPOINT
-   - PYROMIND_STORAGE_ACCESS_KEY
+   - PYROMIND_API_KEY (used as access key for storage)
    - PYROMIND_STORAGE_SECRET_KEY
    - PYROMIND_STORAGE_BUCKET (optional)
 2. Parameters when initializing the client
@@ -23,17 +23,23 @@ from pyromind_sdk import StorageClient
 
 
 def list_files_example(folder_path: str = "", bucket_name: Optional[str] = None) -> None:
-    """Example: List files in a folder."""
+    """Example: List files and folders in a directory."""
     storage = StorageClient()
     
     try:
         print(f"Listing files in '{folder_path}'...")
-        files = storage.list_files(folder_path=folder_path, bucket_name=bucket_name, recursive=True)
+        items = storage.list_files(folder_path=folder_path, bucket_name=bucket_name, recursive=True, max_depth=2)
         
-        print(f"✓ Found {len(files)} file(s):")
-        for file in files:
-            size_mb = file['size'] / (1024 * 1024)
-            print(f"  - {file['object_name']} ({size_mb:.2f} MB)")
+        files = [item for item in items if item.get("type") == "file"]
+        folders = [item for item in items if item.get("type") == "folder"]
+        
+        print(f"✓ Found {len(items)} item(s) ({len(files)} file(s), {len(folders)} folder(s)):")
+        for item in items:
+            if item.get("type") == "folder":
+                print(f"  - {item['object_name']} [FOLDER]")
+            else:
+                size_mb = item['size'] / (1024 * 1024)
+                print(f"  - {item['object_name']} ({size_mb:.2f} MB)")
     except Exception as e:
         print(f"✗ Failed to list files: {e}")
     finally:

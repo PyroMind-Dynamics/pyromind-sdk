@@ -362,8 +362,7 @@ The SDK provides a `StorageClient` for managing file storage operations using Mi
 Set the following environment variables:
 
 ```bash
-export PYROMIND_STORAGE_ENDPOINT="storage.pyromind.ai:9000"
-export PYROMIND_STORAGE_ACCESS_KEY="your-access-key"
+export PYROMIND_API_KEY="your-api-key"  # Used as access key for storage
 export PYROMIND_STORAGE_SECRET_KEY="your-secret-key"
 export PYROMIND_STORAGE_BUCKET="your-bucket-name"  # Optional, can be provided per operation
 ```

@@ -7,6 +7,7 @@ This module provides a client for managing file storage operations via MinIO/S3-
 import os
 from pathlib import Path
 from typing import List, Dict, Any, Optional, BinaryIO, Union
+from collections import deque
 try:
     from minio import Minio
     from minio.error import S3Error
@@ -26,7 +27,7 @@ class StorageClient:
     
     The client uses MinIO/S3-compatible storage and requires:
     - Storage endpoint URL
-    - Access key (from PYROMIND_STORAGE_ACCESS_KEY env var)
+    - Access key (from PYROMIND_API_KEY env var)
     - Secret key (from PYROMIND_STORAGE_SECRET_KEY env var)
     - Bucket name (from PYROMIND_STORAGE_BUCKET env var, optional)
     """
@@ -44,10 +45,11 @@ class StorageClient:
         Initialize the Storage Client
         
         Args:
-            endpoint: Storage endpoint URL (e.g., "storage.pyromind.ai:9000")
+            endpoint: Storage endpoint URL (e.g., "https://storage.pyromind.ai")
                     If not provided, reads from PYROMIND_STORAGE_ENDPOINT env var
+                    Defaults to "https://storage.pyromind.ai" if not set
             access_key: Access key for storage authentication
-                       If not provided, reads from PYROMIND_STORAGE_ACCESS_KEY env var
+                       If not provided, reads from PYROMIND_API_KEY env var
             secret_key: Secret key for storage authentication
                        If not provided, reads from PYROMIND_STORAGE_SECRET_KEY env var
             bucket_name: Default bucket name to use
@@ -59,8 +61,9 @@ class StorageClient:
             ValueError: If required credentials are not provided
         """
         # Get endpoint from parameter or environment variable
+        # Default to https://storage.pyromind.ai if not provided
         if endpoint is None:
-            endpoint = os.getenv("PYROMIND_STORAGE_ENDPOINT")
+            endpoint = os.getenv("PYROMIND_STORAGE_ENDPOINT", "https://storage.pyromind.ai")
         
         if not endpoint:
             raise ValueError(
@@ -69,13 +72,14 @@ class StorageClient:
             )
         
         # Get access key from parameter or environment variable
+        # Use PYROMIND_API_KEY as the access key
         if access_key is None:
-            access_key = os.getenv("PYROMIND_STORAGE_ACCESS_KEY")
+            access_key = os.getenv("PYROMIND_API_KEY")
         
         if not access_key:
             raise ValueError(
                 "Storage access key is required. Please provide it either as a parameter "
-                "or set the PYROMIND_STORAGE_ACCESS_KEY environment variable."
+                "or set the PYROMIND_API_KEY environment variable."
             )
         
         # Get secret key from parameter or environment variable
@@ -97,6 +101,32 @@ class StorageClient:
         access_key = access_key.strip()
         secret_key = secret_key.strip()
         
+        # Parse endpoint URL to extract hostname and port
+        # MinIO client expects format like "hostname:port" or "hostname"
+        # If endpoint contains https:// or http://, extract the hostname and set secure flag
+        from urllib.parse import urlparse
+        
+        # Check if endpoint is a URL with scheme
+        if endpoint.startswith(('http://', 'https://')):
+            parsed = urlparse(endpoint)
+            
+            # Set secure flag based on scheme
+            if parsed.scheme == "https":
+                secure = True
+            elif parsed.scheme == "http":
+                secure = False
+            
+            # Extract hostname and port from netloc (which is hostname:port)
+            # netloc format: hostname:port or just hostname
+            netloc = parsed.netloc
+            if ':' in netloc:
+                # Has port
+                endpoint = netloc
+            else:
+                # No port, use just hostname
+                endpoint = netloc
+        # If no scheme, assume it's already in the correct format (hostname:port or hostname)
+        
         self.endpoint = endpoint
         self.access_key = access_key
         self.secret_key = secret_key
@@ -112,11 +142,39 @@ class StorageClient:
             secure=secure,
             region=region
         )
+        
+        # Pre-populate region cache for default bucket to avoid auto-detection
+        # which may require s3:GetBucketLocation permission that some S3-compatible
+        # services don't grant. This allows operations to proceed without region lookup.
+        # Use "us-east-1" as default region for S3-compatible services
+        if bucket_name and hasattr(self.client, '_region_map'):
+            # Set region to "us-east-1" to avoid GetBucketLocation API call
+            # Most S3-compatible services work with this default region
+            self.client._region_map[bucket_name] = "us-east-1"
     
     def _ensure_bucket(self, bucket_name: str) -> None:
-        """Ensure bucket exists, create if it doesn't."""
-        if not self.client.bucket_exists(bucket_name):
-            self.client.make_bucket(bucket_name)
+        """
+        Ensure bucket exists, create if it doesn't.
+        
+        Note: Some S3-compatible storage services may not support bucket_exists()
+        due to permission differences. In such cases, we skip the check and let
+        the actual operation (list_objects, etc.) fail if the bucket doesn't exist.
+        """
+        try:
+            if not self.client.bucket_exists(bucket_name):
+                self.client.make_bucket(bucket_name)
+        except S3Error as e:
+            # If bucket_exists() fails due to AccessDenied or other permission issues,
+            # we skip the check and let the actual operation handle the error.
+            # This is common with some S3-compatible storage services where
+            # list_buckets() works but bucket_exists() requires additional permissions.
+            # s5cmd and other tools work because they use different API calls.
+            if e.code == "AccessDenied":
+                # Skip bucket existence check, let the actual operation fail if needed
+                pass
+            else:
+                # Re-raise other errors
+                raise
     
     def _get_bucket(self, bucket_name: Optional[str] = None) -> str:
         """Get bucket name, using default if not provided."""
@@ -126,28 +184,37 @@ class StorageClient:
                 "Bucket name is required. Please provide it either as a parameter "
                 "or set the PYROMIND_STORAGE_BUCKET environment variable."
             )
+        # Ensure region cache is set for this bucket to avoid GetBucketLocation API call
+        # which may require s3:GetBucketLocation permission that some S3-compatible
+        # services don't grant
+        if hasattr(self.client, '_region_map') and bucket not in self.client._region_map:
+            self.client._region_map[bucket] = "us-east-1"
         return bucket
     
     def list_files(
         self,
         folder_path: str = "",
         bucket_name: Optional[str] = None,
-        recursive: bool = True
+        recursive: bool = True,
+        max_depth: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
-        List files in a folder
+        List files and folders in a directory
         
         Args:
             folder_path: Path to the folder (e.g., "documents/" or "images/2024/")
             bucket_name: Bucket name (uses default if not provided)
             recursive: Whether to list files recursively (default: True)
+            max_depth: Maximum depth for recursive listing (None for unlimited, default: None)
+                      Only applies when recursive=True
         
         Returns:
-            List of file information dictionaries, each containing:
-            - object_name: Full path to the file
-            - size: File size in bytes
+            List of file/folder information dictionaries, each containing:
+            - object_name: Full path to the file or folder
+            - size: File size in bytes (0 for folders)
             - last_modified: Last modification time
             - etag: ETag of the object
+            - type: "file" or "folder"
         """
         bucket = self._get_bucket(bucket_name)
         self._ensure_bucket(bucket)
@@ -158,7 +225,13 @@ class StorageClient:
         else:
             prefix = ""
         
-        files = []
+        # If recursive=True and max_depth is specified, use optimized layer-by-layer traversal
+        # instead of reading all objects and filtering
+        if recursive and max_depth is not None:
+            return self._list_files_with_max_depth(bucket, prefix, max_depth)
+        
+        # Otherwise, use standard recursive or non-recursive listing
+        items = []
         try:
             objects = self.client.list_objects(
                 bucket_name=bucket,
@@ -167,20 +240,96 @@ class StorageClient:
             )
             
             for obj in objects:
-                # Skip directory markers
-                if obj.object_name.endswith("/"):
-                    continue
+                # Determine if it's a folder (ends with /) or file
+                is_folder = obj.object_name.endswith("/")
                 
-                files.append({
+                items.append({
                     "object_name": obj.object_name,
-                    "size": obj.size,
+                    "size": 0 if is_folder else obj.size,
                     "last_modified": obj.last_modified.isoformat() if obj.last_modified else None,
-                    "etag": obj.etag
+                    "etag": obj.etag,
+                    "type": "folder" if is_folder else "file"
                 })
         except S3Error as e:
             raise ValueError(f"Failed to list files: {e.message}")
         
-        return files
+        return items
+    
+    def _list_files_with_max_depth(
+        self,
+        bucket: str,
+        prefix: str,
+        max_depth: int
+    ) -> List[Dict[str, Any]]:
+        """
+        List files and folders with max_depth limit using layer-by-layer traversal.
+        This is more efficient than reading all objects and filtering.
+        
+        Args:
+            bucket: Bucket name
+            prefix: Path prefix to start from
+            max_depth: Maximum depth to traverse (0 = only direct children, 1 = direct children + first level, etc.)
+        
+        Returns:
+            List of file/folder information dictionaries
+        """
+        items = []
+        # Queue stores (folder_path, folder_depth) tuples
+        # folder_depth is the depth of the folder itself (0 for starting prefix)
+        queue = deque([(prefix, 0)])
+        seen_paths = set()  # Track seen paths to avoid duplicates
+        
+        try:
+            while queue:
+                current_prefix, folder_depth = queue.popleft()
+                
+                # Note: We don't skip if current_prefix is in seen_paths because
+                # the folder itself might have been seen as an object, but we still
+                # need to list its contents. We only track individual objects to avoid duplicates.
+                
+                # Calculate the depth of items in this folder
+                # Items in the starting folder have depth 1, items in subfolders have depth = folder_depth + 1
+                item_depth = folder_depth + 1
+                
+                # If item_depth exceeds max_depth + 1, skip listing this folder
+                # max_depth=0 means only direct children (depth 1), max_depth=1 means direct children + first level (depth 2), etc.
+                if item_depth > max_depth + 1:
+                    continue
+                
+                # List objects in current directory (non-recursive)
+                objects = self.client.list_objects(
+                    bucket_name=bucket,
+                    prefix=current_prefix,
+                    recursive=False
+                )
+                
+                for obj in objects:
+                    # Skip if already seen
+                    if obj.object_name in seen_paths:
+                        continue
+                    seen_paths.add(obj.object_name)
+                    
+                    # Determine if it's a folder (ends with /) or file
+                    is_folder = obj.object_name.endswith("/")
+                    
+                    items.append({
+                        "object_name": obj.object_name,
+                        "size": 0 if is_folder else obj.size,
+                        "last_modified": obj.last_modified.isoformat() if obj.last_modified else None,
+                        "etag": obj.etag,
+                        "type": "folder" if is_folder else "file"
+                    })
+                    
+                    # If it's a folder and we haven't reached max_depth, add to queue
+                    # The folder's depth is item_depth, which will be used when listing its contents
+                    # We add to queue if item_depth <= max_depth (so max_depth=1 will include first level subdirectories)
+                    if is_folder and item_depth <= max_depth:
+                        queue.append((obj.object_name, item_depth))
+                        
+        except S3Error as e:
+            raise ValueError(f"Failed to list files: {e.message}")
+        
+        return items
     
     def file_exists(
         self,
