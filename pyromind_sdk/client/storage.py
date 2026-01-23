@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 try:
     from minio import Minio
     from minio.error import S3Error
+    from minio.deleteobjects import DeleteObject
 except ImportError:
     raise ImportError(
         "minio package is required for storage operations. "
@@ -157,10 +158,28 @@ class StorageClient:
         # which may require s3:GetBucketLocation permission that some S3-compatible
         # services don't grant. This allows operations to proceed without region lookup.
         # Use DEFAULT_REGION as default region for S3-compatible services
+        self._current_bucket = None
         if bucket_name and hasattr(self.client, '_region_map'):
             # Set region to DEFAULT_REGION to avoid GetBucketLocation API call
             # Most S3-compatible services work with this default region
             self.client._region_map[bucket_name] = DEFAULT_REGION
+
+    @property
+    def current_bucket(self) -> Optional[str]:
+        """
+        Get the current default bucket name.
+
+        Returns the validated default bucket name, or None if no default is set.
+        This property is useful when you want to use the default bucket without
+        passing bucket_name to every method.
+
+        Returns:
+            Default bucket name or None
+        """
+        if self._current_bucket is None and self.default_bucket:
+            self._current_bucket = self.default_bucket
+            self._cache_region(self._current_bucket)
+        return self._current_bucket
     
     def _ensure_bucket(self, bucket_name: str) -> None:
         """
@@ -187,18 +206,30 @@ class StorageClient:
                 raise
     
     def _get_bucket(self, bucket_name: Optional[str] = None) -> str:
-        """Get bucket name, using default if not provided."""
-        bucket = bucket_name or self.default_bucket
-        if not bucket:
-            raise ValueError(
-                f"Bucket name is required. Please provide it either as a parameter "
-                f"or set the {ENV_STORAGE_BUCKET} environment variable."
-            )
-        # Ensure region cache is set for this bucket to avoid GetBucketLocation API call
-        # which may require s3:GetBucketLocation permission that some S3-compatible
-        # services don't grant
-        self._cache_region(bucket)
-        return bucket
+        """
+        Get bucket name, using default if not provided.
+
+        Args:
+            bucket_name: Bucket name override, or None to use default
+
+        Returns:
+            Validated bucket name
+
+        Raises:
+            ValueError: If no bucket name is available
+        """
+        if bucket_name is None:
+            bucket = self.current_bucket
+            if bucket is None:
+                raise ValueError(
+                    f"Bucket name is required. Please provide it either as a parameter "
+                    f"or set the {ENV_STORAGE_BUCKET} environment variable."
+                )
+            return bucket
+
+        # Custom bucket name provided - cache its region and return
+        self._cache_region(bucket_name)
+        return bucket_name
 
     def _cache_region(self, bucket: str) -> None:
         """
@@ -503,24 +534,24 @@ class StorageClient:
     ) -> Union[bytes, Path]:
         """
         Download a file from storage
-        
+
         Args:
             object_name: Object name in storage (e.g., "documents/file.txt")
             file_path: Local file path to save to (if None, returns bytes)
             bucket_name: Bucket name (uses default if not provided)
-        
+
         Returns:
             If file_path is provided, returns the Path object.
             If file_path is None, returns the file content as bytes.
         """
         bucket = self._get_bucket(bucket_name)
-        
+
         try:
             response = self.client.get_object(bucket, object_name)
             data = response.read()
             response.close()
             response.release_conn()
-            
+
             if file_path is not None:
                 # Save to file
                 file_path = Path(file_path)
@@ -535,7 +566,135 @@ class StorageClient:
             if e.code == "NoSuchKey":
                 raise FileNotFoundError(f"File not found: {object_name}")
             raise ValueError(f"Failed to download file: {e.message}")
-    
+
+    def download_folder(
+        self,
+        folder_path: str,
+        local_path: Union[str, Path],
+        bucket_name: Optional[str] = None,
+        recursive: bool = True
+    ) -> List[Dict[str, Any]]:
+        """
+        Download a folder from storage to a local directory.
+
+        Lists all objects under the folder prefix, downloads each file (skips
+        folder markers), and preserves the directory structure under local_path.
+
+        Args:
+            folder_path: Path to the folder in storage (e.g., "documents/" or "backups/2024/")
+            local_path: Local directory to save files to
+            bucket_name: Bucket name (uses default if not provided)
+            recursive: Whether to download recursively (default: True)
+
+        Returns:
+            List of result dicts per file: {"object_name", "local_path", "size"}
+            or {"object_name", "error"} on failure.
+        """
+        bucket = self._get_bucket(bucket_name)
+        local_path = Path(local_path)
+        local_path.mkdir(parents=True, exist_ok=True)
+
+        prefix = folder_path.rstrip("/") + "/" if folder_path else ""
+        results = []
+
+        try:
+            objects = self.client.list_objects(
+                bucket_name=bucket,
+                prefix=prefix,
+                recursive=recursive
+            )
+            for obj in objects:
+                if obj.object_name.endswith("/"):
+                    continue
+                rel = obj.object_name[len(prefix):] if prefix else obj.object_name
+                target = local_path / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    self.download_file(
+                        object_name=obj.object_name,
+                        file_path=target,
+                        bucket_name=bucket
+                    )
+                    results.append({
+                        "object_name": obj.object_name,
+                        "local_path": str(target),
+                        "size": obj.size,
+                    })
+                except Exception as e:
+                    results.append({
+                        "object_name": obj.object_name,
+                        "error": str(e),
+                    })
+        except S3Error as e:
+            raise ValueError(f"Failed to download folder: {e.message}")
+
+        return results
+
+    def delete_file(
+        self,
+        object_name: str,
+        bucket_name: Optional[str] = None
+    ) -> None:
+        """
+        Delete a single object from storage.
+
+        Args:
+            object_name: Object name in storage (e.g., "documents/file.txt")
+            bucket_name: Bucket name (uses default if not provided)
+        """
+        bucket = self._get_bucket(bucket_name)
+        try:
+            self.client.remove_object(bucket_name=bucket, object_name=object_name)
+        except S3Error as e:
+            raise ValueError(f"Failed to delete file: {e.message}")
+
+    def delete_folder(
+        self,
+        folder_path: str,
+        bucket_name: Optional[str] = None,
+        recursive: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Delete a folder and all objects under it from storage.
+
+        Lists all objects under the folder prefix (including folder markers),
+        then deletes them in batch.
+
+        Args:
+            folder_path: Path to the folder in storage (e.g., "documents/" or "backups/2024/")
+            bucket_name: Bucket name (uses default if not provided)
+            recursive: Whether to delete recursively (default: True)
+
+        Returns:
+            Dict with "deleted" (count) and "errors" (list of error messages).
+        """
+        bucket = self._get_bucket(bucket_name)
+        prefix = folder_path.rstrip("/") + "/" if folder_path else ""
+
+        object_names = []
+        try:
+            objects = self.client.list_objects(
+                bucket_name=bucket,
+                prefix=prefix,
+                recursive=recursive
+            )
+            for obj in objects:
+                object_names.append(obj.object_name)
+        except S3Error as e:
+            raise ValueError(f"Failed to list folder for deletion: {e.message}")
+
+        deleted = 0
+        errors = []
+        if object_names:
+            delete_list = [DeleteObject(name) for name in object_names]
+            for err in self.client.remove_objects(
+                bucket_name=bucket, delete_object_list=delete_list
+            ):
+                errors.append(str(err))
+            deleted = len(object_names) - len(errors)
+
+        return {"deleted": deleted, "errors": errors}
+
     def close(self):
         """Close the client (no-op for MinIO client)"""
         pass

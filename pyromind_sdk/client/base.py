@@ -12,6 +12,16 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 
+# Constants
+DEFAULT_API_BASE_URL = "https://pyromind.ai/api/v1"
+DEFAULT_TIMEOUT = 30
+DEFAULT_MAX_RETRIES = 3
+ENV_API_KEY = "PYROMIND_API_KEY"
+ENV_BASE_URL = "PYROMIND_BASE_URL"
+RETRY_STATUS_CODES = [429, 500, 502, 503, 504]
+RETRY_ALLOWED_METHODS = ["GET", "POST", "PUT", "DELETE"]
+
+
 class PyroMindAPIError(Exception):
     """Base exception for PyroMind API errors"""
     def __init__(self, message: str, status_code: Optional[int] = None, response: Optional[Dict] = None):
@@ -24,10 +34,10 @@ class PyroMindAPIError(Exception):
 class PyroMindClient:
     """
     Base client class for PyroMind API
-    
+
     Handles authentication, HTTP requests, and error handling.
     All resource-specific clients inherit from this class.
-    
+
     Args:
         api_key: Bearer token for API authentication. If not provided, will try to
                 read from PYROMIND_API_KEY environment variable. If neither is
@@ -37,52 +47,52 @@ class PyroMindClient:
                  defaults to https://pyromind.ai/api/v1
         timeout: Request timeout in seconds (default: 30)
         max_retries: Maximum number of retries for failed requests (default: 3)
-    
+
     Raises:
         ValueError: If api_key is not provided and PYROMIND_API_KEY environment
                    variable is not set.
     """
-    
+
     def __init__(
         self,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
-        timeout: int = 30,
-        max_retries: int = 3
+        timeout: int = DEFAULT_TIMEOUT,
+        max_retries: int = DEFAULT_MAX_RETRIES
     ):
         # Get API key from parameter or environment variable
         if api_key is None:
-            api_key = os.getenv("PYROMIND_API_KEY")
-        
+            api_key = os.getenv(ENV_API_KEY)
+
         if not api_key:
             raise ValueError(
-                "API key is required. Please provide it either as a parameter "
-                "or set the PYROMIND_API_KEY environment variable."
+                f"API key is required. Please provide it either as a parameter "
+                f"or set the {ENV_API_KEY} environment variable."
             )
-        
+
         # Strip whitespace from API key
         api_key = api_key.strip()
-        
+
         # Get base URL from parameter, environment variable, or use default
         if base_url is None:
-            base_url = os.getenv("PYROMIND_BASE_URL", "https://pyromind.ai/api/v1")
-        
+            base_url = os.getenv(ENV_BASE_URL, DEFAULT_API_BASE_URL)
+
         if not base_url:
             raise ValueError(
-                "Base URL is required. Please provide it either as a parameter "
-                "or set the PYROMIND_BASE_URL environment variable."
+                f"Base URL is required. Please provide it either as a parameter "
+                f"or set the {ENV_BASE_URL} environment variable."
             )
         self.api_key = api_key
         self.base_url = base_url.rstrip('/')
         self.timeout = timeout
-        
+
         # Create session with retry strategy
         self.session = requests.Session()
         retry_strategy = Retry(
             total=max_retries,
             backoff_factor=1,
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["GET", "POST", "PUT", "DELETE"]
+            status_forcelist=RETRY_STATUS_CODES,
+            allowed_methods=RETRY_ALLOWED_METHODS
         )
         adapter = HTTPAdapter(max_retries=retry_strategy)
         self.session.mount("http://", adapter)

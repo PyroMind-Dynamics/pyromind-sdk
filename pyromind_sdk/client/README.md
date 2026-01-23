@@ -453,6 +453,40 @@ file_data = storage.download_file(object_name="documents/file.txt")
 print(f"File size: {len(file_data)} bytes")
 ```
 
+### Download a folder
+
+```python
+# Download a folder and all its contents recursively to a local directory
+results = storage.download_folder(
+    folder_path="documents/",
+    local_path="/local/path/to/downloads"
+)
+
+for r in results:
+    if "error" in r:
+        print(f"Failed: {r['object_name']} - {r['error']}")
+    else:
+        print(f"Downloaded: {r['object_name']} -> {r['local_path']}")
+```
+
+### Delete a file
+
+```python
+# Delete a single object
+storage.delete_file(object_name="documents/file.txt")
+```
+
+### Delete a folder
+
+```python
+# Delete a folder and all objects under it recursively
+result = storage.delete_folder(folder_path="documents/backups/2024/")
+print(f"Deleted {result['deleted']} object(s)")
+if result["errors"]:
+    for err in result["errors"]:
+        print(f"  Error: {err}")
+```
+
 ## Error Handling
 
 ```python
