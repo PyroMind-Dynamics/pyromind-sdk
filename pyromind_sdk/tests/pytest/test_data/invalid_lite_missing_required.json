@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "nodes": {
+    "test_node": {
+      "type": "GUISFTTrainingNode",
+      "index": 0,
+      "inputs": {
+        "model_type": "qwen3_vl"
+      },
+      "outputs": [
+        "output"
+      ]
+    }
+  }
+}

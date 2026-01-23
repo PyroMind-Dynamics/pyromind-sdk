@@ -22,6 +22,9 @@ Usage Examples:
     python workflow_cli.py validate workflow.json
     python workflow_cli.py validate workflow.lite.json
 
+    # Validate with node_info for enhanced checks (validates node definitions)
+    python workflow_cli.py validate --with-node-info workflow.json
+
     # Convert with node info from API (better parameter mapping)
     python workflow_cli.py convert --with-node-info workflow.json output.lite.json
 """
@@ -81,6 +84,9 @@ Examples:
   # Validate workflow (auto-detects format)
   python workflow_cli.py validate workflow.json
 
+  # Validate workflow with node_info for enhanced checks
+  python workflow_cli.py validate --with-node-info workflow.json
+
   # Convert with accurate parameter mapping using API
   python workflow_cli.py convert --with-node-info workflow.json output.lite.json
         """
@@ -108,7 +114,7 @@ Examples:
     parser.add_argument(
         "--with-node-info",
         action="store_true",
-        help="Fetch node info from API for accurate parameter mapping"
+        help="Fetch node info from API for accurate parameter mapping and enhanced validation"
     )
     parser.add_argument(
         "--auto-layout",
@@ -147,22 +153,48 @@ Examples:
         nodes = data.get("nodes", [])
         is_lite_format = isinstance(nodes, dict)
 
-        if is_lite_format:
-            is_valid, errors = validate_lite_format(data)
-        else:
-            is_valid, errors = validate_standard_format(data)
+        # Fetch node_info if requested
+        node_info = None
+        if args.with_node_info:
+            node_info = fetch_node_info()
+            if node_info:
+                print(f"✓ Using node_info for enhanced validation ({len(node_info)} node types)")
 
-        # Print all errors
-        for error in errors:
-            if error.startswith("Warning:"):
-                print(f"⚠ {error}")
-            else:
-                print(f"✗ {error}")
+        if is_lite_format:
+            is_valid, errors = validate_lite_format(data, node_info=node_info)
+        else:
+            is_valid, errors = validate_standard_format(data, node_info=node_info)
+
+        # Separate errors and warnings
+        error_list = [e for e in errors if not e.startswith("Warning:")]
+        warning_list = [e for e in errors if e.startswith("Warning:")]
+
+        # Print errors first
+        if error_list:
+            print(f"\n✗ Errors ({len(error_list)}):")
+            for error in error_list:
+                print(f"  {error}")
+
+        # Print warnings
+        if warning_list:
+            print(f"\n⚠ Warnings ({len(warning_list)}):")
+            for warning in warning_list:
+                print(f"  {warning}")
 
         # Exit with appropriate code
         if is_valid:
-            sys.exit(0)
+            if not errors:
+                # No errors or warnings - validation passed
+                print("\n✓ Validation passed")
+            elif not error_list:
+                # Has warnings but no errors - validation passed with warnings
+                print(f"\n✓ Validation passed (with {len(warning_list)} warning(s))")
+            else:
+                # Has errors - validation failed
+                print(f"\n✗ Validation failed with {len(error_list)} error(s)")
+            sys.exit(0 if not error_list else 1)
         else:
+            print(f"\n✗ Validation failed with {len(error_list)} error(s)")
             sys.exit(1)
 
     # Handle convert command

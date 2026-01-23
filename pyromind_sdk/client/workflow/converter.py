@@ -87,7 +87,8 @@ class WorkflowMapper:
 
         for node_name, node_data in lite_nodes.items():
             # Use existing index if available, otherwise assign sequential ID
-            if "index" in node_data and node_data["index"] > 0:
+            # Note: index can be 0, so we check for "index" in node_data and it's not None
+            if "index" in node_data and node_data["index"] is not None:
                 node_id = node_data["index"]
             else:
                 node_id = next_id
@@ -472,7 +473,10 @@ class LinkBuilder:
                         output_idx = output_map.get(output_name, 0)
 
                     # Calculate input index
-                    input_idx = self._calculate_input_index(node_data, input_name)
+                    # Get param_order from type_resolver for accurate index calculation
+                    node_type = node_data.get("type", "")
+                    param_order = self.type_resolver.get_parameter_order(node_type) if node_type else None
+                    input_idx = self._calculate_input_index(node_data, input_name, node_type, param_order)
 
                     # Determine link type
                     link_type = self._determine_link_type(
@@ -490,30 +494,81 @@ class LinkBuilder:
 
         return links
 
-    def _calculate_input_index(self, node_data: Dict, target_input_name: str) -> int:
+    def _calculate_input_index(
+        self,
+        node_data: Dict,
+        target_input_name: str,
+        node_type: str = None,
+        param_order: List[str] = None
+    ) -> int:
         """
         Calculate the input index for a given input name.
+
+        In standard format, inputs array contains inputs in node_info order.
+        Only includes: connections and inputs with widgets (including optional inputs).
 
         Args:
             node_data: Node data from lite format
             target_input_name: Name of the input to find index for
+            node_type: Node type (for type checking)
+            param_order: Parameter order from node_info (for correct ordering)
 
         Returns:
-            Input index
+            Input index in the standard format inputs array
         """
-        inputs = node_data.get("inputs", {})
-        node_type = node_data.get("type", "")
-
+        lite_inputs = node_data.get("inputs", {})
+        if node_type is None:
+            node_type = node_data.get("type", "")
+        
+        # If we have param_order, use it to determine the correct index
+        # This matches the order used in _build_standard_inputs
+        if param_order and target_input_name in param_order:
+            target_param_idx = param_order.index(target_input_name)
+            input_idx = 0
+            
+            # Count inputs that come before this one in param_order
+            # Only count those that will actually be in inputs_array
+            # Logic matches _build_standard_inputs:
+            # - All inputs in lite_inputs are in inputs_array
+            # - Optional inputs from node_info (with widgets) are in inputs_array
+            # Get required and optional parameter sets
+            required_params = set()
+            optional_params = set()
+            if self.type_resolver.node_info and node_type in self.type_resolver.node_info:
+                node_def = self.type_resolver.node_info[node_type]
+                input_defs = node_def.get("input", {})
+                if "required" in input_defs:
+                    required_params = set(input_defs["required"].keys())
+                if "optional" in input_defs:
+                    optional_params = set(input_defs["optional"].keys())
+            
+            for i in range(target_param_idx):
+                param_name = param_order[i]
+                
+                # Check if this parameter should be in inputs_array
+                should_be_in_inputs = False
+                
+                if param_name in lite_inputs:
+                    # If in lite_inputs, it's in inputs_array (connection or value)
+                    should_be_in_inputs = True
+                elif param_name in optional_params:
+                    # Optional input that should have a widget - in inputs_array
+                    should_be_in_inputs = True
+                
+                if should_be_in_inputs:
+                    input_idx += 1
+            
+            return input_idx
+        
+        # Fallback: old logic (for nodes without node_info)
+        # Count only connections
         input_idx = 0
-        for inp_name in inputs.keys():
+        for inp_name in lite_inputs.keys():
             if inp_name == target_input_name:
                 break
-            inp_value = inputs[inp_name]
+            inp_value = lite_inputs[inp_name]
             # Count if it's a connection
             if isinstance(inp_value, dict) and "node_id" in inp_value:
-                input_idx += 1
-            # Count if it's an ENV type
-            elif self.type_resolver.is_env_type(node_type, inp_name):
                 input_idx += 1
 
         return input_idx
@@ -837,7 +892,8 @@ class WorkflowLiteConverter:
         links = self.link_builder.convert_lite_to_links(lite.get("nodes", {}), self.node_mapper)
 
         # Update nodes with link references
-        self._update_nodes_with_links(nodes, links)
+        # Pass lite nodes to help determine which inputs should have links
+        self._update_nodes_with_links(nodes, links, lite.get("nodes", {}))
 
         # Generate workflow ID (UUID format)
         workflow_id = self._generate_workflow_id(original_workflow, lite)
@@ -889,7 +945,7 @@ class WorkflowLiteConverter:
             input_name = inp.get("name", "")
             input_type = inp.get("type", "")
 
-            if input_name and input_type != "ENV":
+            if input_name:
                 if input_name in input_connections:
                     lite_inputs[input_name] = input_connections[input_name]
                 elif inp.get("widget"):
@@ -1072,21 +1128,91 @@ class WorkflowLiteConverter:
                 connected_input_names.add(input_name)
 
         # Build widgets_values
+        # Rules:
+        # 1. Include all required parameters (use default value if not in lite format)
+        # 2. Include optional parameters that exist in lite format and have links (use default value)
+        # 3. Order: First required, then optional. Within each category, widget-able types first, then non-widget types
+        #    Widget-able types: STRING, INT, FLOAT, BOOLEAN, COMBO, etc.
+        #    Non-widget types: MODEL, VAE, CLIP, CONDITIONING, LATENT, IMAGE, etc.
         if param_order:
-            # Use parameter order from node_info
-            for param_name in param_order:
+            # Get required and optional parameter sets
+            required_params = {}
+            optional_params = {}
+            if self.type_resolver.node_info and node_type in self.type_resolver.node_info:
+                node_def = self.type_resolver.node_info[node_type]
+                input_defs = node_def.get("input", {})
+                if "required" in input_defs:
+                    required_params = input_defs["required"]
+                if "optional" in input_defs:
+                    optional_params = input_defs["optional"]
+            
+            # Helper function to check if a type is widget-able
+            def is_widgetable_type(param_type: str) -> bool:
+                """Check if parameter type is widget-able (primitive type)."""
+                widgetable_types = {"STRING", "INT", "FLOAT", "BOOLEAN", "COMBO"}
+                return param_type in widgetable_types
+            
+            # Helper function to get parameter type
+            def get_param_type(param_name: str, param_def: Any) -> str:
+                """Get parameter type from node_info definition."""
+                if isinstance(param_def, list) and len(param_def) > 0:
+                    first_elem = param_def[0]
+                    if isinstance(first_elem, str):
+                        return first_elem
+                    elif isinstance(first_elem, list):
+                        # COMBO type
+                        return "COMBO"
+                return "STRING"  # Default
+            
+            # Collect parameters that should be in widgets_values
+            # Maintain original order within required/optional, but group by widget-able vs non-widget
+            required_widgetable = []  # List of (param_name, param_type)
+            required_nonwidget = []    # List of (param_name, param_type)
+            optional_widgetable = []   # List of (param_name, param_type)
+            optional_nonwidget = []    # List of (param_name, param_type)
+            
+            # Process required parameters (maintain original order)
+            for param_name, param_def in required_params.items():
+                param_type = get_param_type(param_name, param_def)
+                if is_widgetable_type(param_type):
+                    required_widgetable.append((param_name, param_type))
+                else:
+                    required_nonwidget.append((param_name, param_type))
+            
+            # Process optional parameters that exist in lite format and have links (maintain original order)
+            for param_name, param_def in optional_params.items():
+                if param_name in lite_inputs:
+                    input_value = lite_inputs[param_name]
+                    # Only include if it's a connection (has link)
+                    if isinstance(input_value, dict) and "node_id" in input_value:
+                        param_type = get_param_type(param_name, param_def)
+                        if is_widgetable_type(param_type):
+                            optional_widgetable.append((param_name, param_type))
+                        else:
+                            optional_nonwidget.append((param_name, param_type))
+            
+            # Combine in correct order: required (widget-able, then non-widget), then optional (widget-able, then non-widget)
+            params_to_include = []
+            params_to_include.extend([(name, typ, True, True) for name, typ in required_widgetable])
+            params_to_include.extend([(name, typ, True, False) for name, typ in required_nonwidget])
+            params_to_include.extend([(name, typ, False, True) for name, typ in optional_widgetable])
+            params_to_include.extend([(name, typ, False, False) for name, typ in optional_nonwidget])
+            
+            # Build widgets_values in sorted order
+            for param_name, param_type, is_required, is_widgetable in params_to_include:
                 if param_name in lite_inputs:
                     input_value = lite_inputs[param_name]
                     if isinstance(input_value, dict) and "node_id" in input_value:
-                        # Connected input - try to get widget value
-                        widget_value = input_value.get("_widget_value")
-                        if widget_value is None:
-                            # Use default value from node_info
-                            widget_value = self.type_resolver.get_default_value(node_type, param_name)
-                        widgets_values.append(widget_value)
+                        # Connected input - use default value
+                        widget_value = self.type_resolver.get_default_value(node_type, param_name)
+                        widgets_values.append(widget_value if widget_value is not None else "")
                     else:
-                        # Parameter value
+                        # Parameter value - use value from lite format
                         widgets_values.append(input_value)
+                else:
+                    # Parameter not in lite format - use default value
+                    widget_value = self.type_resolver.get_default_value(node_type, param_name)
+                    widgets_values.append(widget_value if widget_value is not None else "")
         else:
             # Fallback: preserve all input values in order (for nodes without node_info)
             # Sort by param_N names to maintain order
@@ -1104,29 +1230,82 @@ class WorkflowLiteConverter:
                         widgets_values.append(input_value)
 
         # Build inputs array
+        # Rules:
+        # 1. All optional inputs that exist in lite format must be in inputs array (as connections or widgets)
+        # 2. All connected inputs must be in inputs array
+        # 3. All inputs with values (widgets) must be in inputs array
+        # 4. All optional inputs from node_info (with widgets) must be in inputs array
+        # 5. No special handling for param_type - follow node_info order
+        
+        # Get required and optional parameter sets
+        required_params = set()
+        optional_params = set()
+        if self.type_resolver.node_info and node_type in self.type_resolver.node_info:
+            node_def = self.type_resolver.node_info[node_type]
+            input_defs = node_def.get("input", {})
+            if "required" in input_defs:
+                required_params = set(input_defs["required"].keys())
+            if "optional" in input_defs:
+                optional_params = set(input_defs["optional"].keys())
+        
+        inputs_to_add = {}  # name -> input_dict
+        
+        # Step 1: Add all inputs that exist in lite format
+        # This includes both required and optional parameters
         for input_name, input_value in lite_inputs.items():
             input_type = self.type_resolver.get_input_type(node_type, input_name)
-
+            
             if isinstance(input_value, dict) and "node_id" in input_value:
                 # Connection - must be in inputs array
-                inputs_array.append({
+                input_dict = {
                     "name": input_name,
                     "type": input_type,
                     "link": None  # Will be filled later
-                })
-
-        # Add ENV type inputs that weren't in lite format
+                }
+                # Add widget info for all connected inputs
+                input_dict["widget"] = {"name": input_name}
+                inputs_to_add[input_name] = input_dict
+            else:
+                # Has a value - has widget, must be in inputs array
+                inputs_to_add[input_name] = {
+                    "name": input_name,
+                    "type": input_type,
+                    "link": None,
+                    "widget": {"name": input_name}
+                }
+        
+        # Step 2: Add optional inputs that weren't in lite format but should have widgets
+        # (This handles cases like wandb_config which is optional but has a widget in standard format)
         for param_name in param_order:
-            if param_name in connected_input_names:
+            if param_name in inputs_to_add:
                 continue
             if param_name in lite_inputs:
-                continue
-            if self.type_resolver.is_env_type(node_type, param_name):
-                inputs_array.append({
+                continue  # Already handled in Step 1
+            
+            # Add all optional inputs that weren't in lite format (they should have widgets)
+            # No special handling for param_type - add all optional inputs
+            if param_name in optional_params:
+                param_type = self.type_resolver.get_input_type(node_type, param_name)
+                inputs_to_add[param_name] = {
                     "name": param_name,
-                    "type": "ENV",
-                    "link": None
-                })
+                    "type": param_type,
+                    "link": None,
+                    "widget": {"name": param_name}
+                }
+        
+        # Step 3: Build inputs_array in node_info order
+        # Only include inputs that should be in inputs_array (connections or have widgets)
+        # Follow node_info order, but only for inputs that are actually in inputs_array
+        if param_order:
+            # Add all inputs in node_info parameter order
+            # Only include those that are in inputs_to_add (i.e., should be in inputs_array)
+            for param_name in param_order:
+                if param_name in inputs_to_add:
+                    inputs_array.append(inputs_to_add[param_name])
+        else:
+            # Fallback: add all inputs in the order they were found
+            for input_dict in inputs_to_add.values():
+                inputs_array.append(input_dict)
 
         return inputs_array, widgets_values
 
@@ -1153,13 +1332,14 @@ class WorkflowLiteConverter:
 
         return outputs_array
 
-    def _update_nodes_with_links(self, nodes: List[Dict], links: List[List]) -> None:
+    def _update_nodes_with_links(self, nodes: List[Dict], links: List[List], lite_nodes: Dict[str, Dict] = None) -> None:
         """
         Update nodes with link references.
 
         Args:
             nodes: List of node dictionaries (modified in place)
             links: List of link arrays
+            lite_nodes: Lite format nodes to check which inputs are connections
         """
         # Build mappings
         target_input_links = {}  # target_id -> {input_idx: link_id}
@@ -1182,13 +1362,28 @@ class WorkflowLiteConverter:
         # Update nodes
         for node in nodes:
             node_id = node["id"]
+            node_name = self.node_mapper.get_name(node_id)
+
+            # Check which inputs are connections in lite format
+            connected_input_names = set()
+            if lite_nodes and node_name:
+                lite_node = lite_nodes.get(node_name, {})
+                lite_inputs = lite_node.get("inputs", {})
+                for input_name, input_value in lite_inputs.items():
+                    if isinstance(input_value, dict) and "node_id" in input_value:
+                        connected_input_names.add(input_name)
 
             # Update input links
+            # Only set link for inputs that are actually connections in lite format
             if node_id in target_input_links:
                 input_links = target_input_links[node_id]
                 for i, inp in enumerate(node["inputs"]):
                     if i in input_links:
-                        inp["link"] = input_links[i]
+                        input_name = inp.get("name")
+                        # Only set link if this input is a connection in lite format
+                        if input_name in connected_input_names:
+                            inp["link"] = input_links[i]
+                        # Otherwise, don't set the link (it's not a connection)
 
             # Update output links
             if node_id in output_links_map:
