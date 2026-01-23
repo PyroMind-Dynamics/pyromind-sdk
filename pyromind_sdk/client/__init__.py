@@ -9,6 +9,7 @@ from .sandboxes import SandboxesClient
 from .instance import InstanceClient
 from .inference import InferenceClient
 from .training import TrainingClient
+from .storage import StorageClient
 from .client import PyroMindAPIClient
 from .workflow_validator import validate_workflow, WorkflowValidationError
 
@@ -19,6 +20,7 @@ __all__ = [
     "InstanceClient",
     "InferenceClient",
     "TrainingClient",
+    "StorageClient",
     "PyroMindAPIClient",
     "validate_workflow",
     "WorkflowValidationError",

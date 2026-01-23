@@ -353,6 +353,107 @@ The node info format is:
 }
 ```
 
+## Storage Operations
+
+The SDK provides a `StorageClient` for managing file storage operations using MinIO/S3-compatible storage.
+
+### Setup
+
+Set the following environment variables:
+
+```bash
+export PYROMIND_STORAGE_ENDPOINT="storage.pyromind.ai:9000"
+export PYROMIND_STORAGE_ACCESS_KEY="your-access-key"
+export PYROMIND_STORAGE_SECRET_KEY="your-secret-key"
+export PYROMIND_STORAGE_BUCKET="your-bucket-name"  # Optional, can be provided per operation
+```
+
+### Initialize Storage Client
+
+```python
+from pyromind_sdk import StorageClient
+
+# Using environment variables
+storage = StorageClient()
+
+# Or with explicit parameters
+storage = StorageClient(
+    endpoint="storage.pyromind.ai:9000",
+    access_key="your-access-key",
+    secret_key="your-secret-key",
+    bucket_name="your-bucket-name",
+    secure=False  # Set to True for HTTPS
+)
+```
+
+### List files in a folder
+
+```python
+# List all files in a folder
+files = storage.list_files(folder_path="documents/", recursive=True)
+
+for file in files:
+    print(f"File: {file['object_name']}")
+    print(f"  Size: {file['size']} bytes")
+    print(f"  Modified: {file['last_modified']}")
+```
+
+### Check if file exists
+
+```python
+# Check if a file exists
+exists = storage.file_exists("documents/report.pdf")
+if exists:
+    print("File exists!")
+else:
+    print("File not found")
+```
+
+### Upload a file
+
+```python
+# Upload a single file
+result = storage.upload_file(
+    file_path="/local/path/to/file.txt",
+    object_name="documents/file.txt"
+)
+
+print(f"Uploaded: {result['object_name']}")
+print(f"ETag: {result['etag']}")
+print(f"Size: {result['size']} bytes")
+```
+
+### Upload a folder
+
+```python
+# Upload a folder and all its contents recursively
+results = storage.upload_folder(
+    folder_path="/local/path/to/folder",
+    object_prefix="backups/2024/"
+)
+
+for result in results:
+    if "error" in result:
+        print(f"Failed: {result['object_name']} - {result['error']}")
+    else:
+        print(f"Uploaded: {result['object_name']}")
+```
+
+### Download a file
+
+```python
+# Download to a local file
+local_path = storage.download_file(
+    object_name="documents/file.txt",
+    file_path="/local/path/to/downloaded_file.txt"
+)
+print(f"Downloaded to: {local_path}")
+
+# Or download as bytes
+file_data = storage.download_file(object_name="documents/file.txt")
+print(f"File size: {len(file_data)} bytes")
+```
+
 ## Error Handling
 
 ```python

@@ -27,6 +27,7 @@ from .client import (
     InstanceClient,
     InferenceClient,
     TrainingClient,
+    StorageClient,
     PyroMindAPIClient,
 )
 
@@ -45,6 +46,7 @@ __all__ = [
     "InstanceClient",
     "InferenceClient",
     "TrainingClient",
+    "StorageClient",
     "PyroMindAPIClient",
 ]
 
