@@ -186,9 +186,23 @@ Examples:
             if not errors:
                 # No errors or warnings - validation passed
                 print("\n✓ Validation passed")
+
+                # Suggest using --with-node-info for enhanced validation
+                if not node_info:
+                    print("\n💡 Tip: Use --with-node-info for enhanced validation")
+                    print("   This will check parameter values against node definitions")
+                    print("   Example: python workflow_cli.py validate --with-node-info workflow.json")
+
             elif not error_list:
                 # Has warnings but no errors - validation passed with warnings
                 print(f"\n✓ Validation passed (with {len(warning_list)} warning(s))")
+
+                # Suggest using --with-node-info for enhanced validation
+                if not node_info:
+                    print("\n💡 Tip: Use --with-node-info for enhanced validation")
+                    print("   This will check parameter values against node definitions")
+                    print("   Example: python workflow_cli.py validate --with-node-info workflow.json")
+
             else:
                 # Has errors - validation failed
                 print(f"\n✗ Validation failed with {len(error_list)} error(s)")

@@ -883,14 +883,37 @@ def _validate_parameter_value(
     if not widgets_values:
         return []
 
-    # Get parameter order from node_info to find index
+    # Get parameter definitions
     node_def = node_info.get(node_type, {})
     input_defs = node_def.get("input", {})
     required_params = input_defs.get("required", {})
     optional_params = input_defs.get("optional", {})
 
-    # Build parameter order (required first, then optional with links)
-    param_order = list(required_params.keys())
+    # Helper to get parameter type
+    def get_param_type(param_def: Any) -> str:
+        if isinstance(param_def, list) and len(param_def) > 0:
+            first_elem = param_def[0]
+            if isinstance(first_elem, str):
+                return first_elem
+            elif isinstance(first_elem, list):
+                return "COMBO"
+        return "STRING"
+
+    # Build parameter order matching converter's logic
+    # Converter order: required widgetable → required non-widget → optional (with links) widgetable → optional (with links) non-widget
+    param_order = []
+
+    # Required: widgetable first (in node_info definition order)
+    for pname, pdef in required_params.items():
+        ptype = get_param_type(pdef)
+        if _is_widgetable_type(ptype):
+            param_order.append(pname)
+
+    # Required: non-widget (in node_info definition order)
+    for pname, pdef in required_params.items():
+        ptype = get_param_type(pdef)
+        if not _is_widgetable_type(ptype):
+            param_order.append(pname)
 
     # Get inputs array to find optional params with links
     inputs_array = node.get("inputs", [])
@@ -899,7 +922,19 @@ def _validate_parameter_value(
         if isinstance(inp, dict) and inp.get("link") is not None:
             connected_input_names.add(inp.get("name"))
 
-    param_order.extend(p for p in optional_params.keys() if p in connected_input_names)
+    # Optional with links: widgetable first (in node_info definition order)
+    for pname, pdef in optional_params.items():
+        if pname in connected_input_names:
+            ptype = get_param_type(pdef)
+            if _is_widgetable_type(ptype):
+                param_order.append(pname)
+
+    # Optional with links: non-widget (in node_info definition order)
+    for pname, pdef in optional_params.items():
+        if pname in connected_input_names:
+            ptype = get_param_type(pdef)
+            if not _is_widgetable_type(ptype):
+                param_order.append(pname)
 
     # Find parameter index in widgets_values
     try:
