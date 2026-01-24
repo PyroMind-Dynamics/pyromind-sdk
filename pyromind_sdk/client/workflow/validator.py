@@ -454,14 +454,22 @@ def _validate_nodes(nodes: List[Dict], node_map: Dict[int, Dict], node_info: Opt
                         errors.append(f"Node {node_id} output '{out.get('name', idx)}' is missing 'type' field")
 
                     # Validate links field
-                    if "links" in out and not isinstance(out["links"], list):
-                        errors.append(f"Node {node_id} output '{out.get('name')}' 'links' must be a list")
+                    if "links" in out:
+                        links = out["links"]
+                        # Allow null/None, but if present and not None, must be a list
+                        if links is not None and not isinstance(links, list):
+                            errors.append(f"Node {node_id} output '{out.get('name')}' 'links' must be a list or null, got {type(links).__name__}")
 
         # Validate widgets_values
         if "widgets_values" in node:
             widgets_values = node["widgets_values"]
             if not isinstance(widgets_values, list):
                 errors.append(f"Node {node_id} 'widgets_values' must be a list, got {type(widgets_values).__name__}")
+        
+        # Validate node definition against node_info (if available)
+        if node_info and node_type:
+            definition_errors = _validate_standard_node_definition(node_id, node, node_info)
+            errors.extend(definition_errors)
 
     return errors
 
@@ -673,78 +681,68 @@ def _validate_lite_node_definition(
 ) -> List[str]:
     """
     Validate node definition against node_info for lite format.
-    
+
     Checks:
     1. Node type exists in node_info
     2. Required parameters are present
     3. Input parameters exist in node_info
     4. Output names match node_info (if defined)
-    
+
     Args:
         node_name: Node name
         node_data: Node data dictionary
         node_info: Node information dictionary
-        
+
     Returns:
         List of error messages
     """
     errors = []
     node_type = node_data.get("type")
-    
+
     if not node_type:
         return errors
-    
+
     # Check if node type exists in node_info
     if node_type not in node_info:
         errors.append(f"Node '{node_name}' has unknown type '{node_type}' (not found in node_info)")
         return errors
-    
+
     node_def = node_info[node_type]
     input_defs = node_def.get("input", {})
     required_params = input_defs.get("required", {})
     optional_params = input_defs.get("optional", {})
     all_params = {**required_params, **optional_params}
-    
+
     # Get node inputs
     node_inputs = node_data.get("inputs", {})
-    
+
     # Check required parameters are present
     for param_name in required_params.keys():
         if param_name not in node_inputs:
             errors.append(
                 f"Node '{node_name}' (type '{node_type}') is missing required parameter '{param_name}'"
             )
-    
-    # Check that all input parameters exist in node_info
-    for input_name in node_inputs.keys():
+
+    # Check that all input parameters exist in node_info and validate values
+    for input_name, input_value in node_inputs.items():
         if input_name not in all_params:
             errors.append(
                 f"Node '{node_name}' (type '{node_type}') has unknown input parameter '{input_name}' "
                 f"(not defined in node_info)"
             )
-    
-    # Check outputs (if node_info defines output names)
-    node_outputs = node_data.get("outputs", [])
-    expected_output_names = node_def.get("output_name", [])
-    
-    if expected_output_names:
-        # If node_info defines output names, check they match
-        if len(node_outputs) != len(expected_output_names):
-            errors.append(
-                f"Node '{node_name}' (type '{node_type}') has {len(node_outputs)} outputs, "
-                f"but node_info expects {len(expected_output_names)} outputs: {expected_output_names}"
-            )
         else:
-            # Check each output name matches
-            for i, output_name in enumerate(node_outputs):
-                if i < len(expected_output_names):
-                    expected_name = expected_output_names[i]
-                    if output_name != expected_name:
-                        errors.append(
-                            f"Node '{node_name}' (type '{node_type}') output[{i}] is '{output_name}', "
-                            f"but node_info expects '{expected_name}'"
-                        )
-    
+            # Validate parameter value constraints (for direct values, not connections)
+            if not isinstance(input_value, dict) or "node_id" not in input_value:
+                param_def = all_params[input_name]
+                value_errors = _validate_lite_parameter_value(
+                    node_name, node_type, input_name, param_def, input_value, node_info
+                )
+                errors.extend(value_errors)
+
+    # Validate outputs using shared helper
+    node_outputs = node_data.get("outputs", [])
+    errors.extend(_validate_node_outputs(f"'{node_name}'", node_type, node_outputs, node_info))
+
     return errors
 
 
@@ -755,45 +753,45 @@ def _validate_standard_node_definition(
 ) -> List[str]:
     """
     Validate node definition against node_info for standard format.
-    
+
     Checks:
     1. Node type exists in node_info
     2. Required parameters are present (in inputs array or widgets_values)
     3. Input parameters exist in node_info
     4. Output names match node_info (if defined)
-    
+
     Args:
         node_id: Node ID
         node: Node dictionary
         node_info: Node information dictionary
-        
+
     Returns:
         List of error messages
     """
     errors = []
     node_type = node.get("type")
-    
+
     if not node_type:
         return errors
-    
+
     # Check if node type exists in node_info
     if node_type not in node_info:
         errors.append(f"Node {node_id} has unknown type '{node_type}' (not found in node_info)")
         return errors
-    
+
     node_def = node_info[node_type]
     input_defs = node_def.get("input", {})
     required_params = input_defs.get("required", {})
     optional_params = input_defs.get("optional", {})
     all_params = {**required_params, **optional_params}
-    
+
     # Get node inputs (from inputs array)
     inputs_array = node.get("inputs", [])
     node_input_names = set()
     for inp in inputs_array:
         if isinstance(inp, dict) and "name" in inp:
             node_input_names.add(inp["name"])
-    
+
     # Check required parameters are present
     for param_name in required_params.keys():
         if param_name not in node_input_names:
@@ -801,40 +799,149 @@ def _validate_standard_node_definition(
                 f"Node {node_id} (type '{node_type}') is missing required parameter '{param_name}' "
                 f"(not found in inputs array)"
             )
-    
-    # Check that all input parameters exist in node_info
-    for input_name in node_input_names:
+
+    # Check that all input parameters exist in node_info and validate types
+    for inp in inputs_array:
+        if not isinstance(inp, dict) or "name" not in inp:
+            continue
+
+        input_name = inp.get("name")
+        input_type = inp.get("type", "AUTO")
+
         if input_name not in all_params:
             errors.append(
                 f"Node {node_id} (type '{node_type}') has unknown input parameter '{input_name}' "
                 f"(not defined in node_info)"
             )
-    
-    # Check outputs (if node_info defines output names)
-    outputs_array = node.get("outputs", [])
-    expected_output_names = node_def.get("output_name", [])
-    
-    if expected_output_names:
-        # If node_info defines output names, check they match
-        node_output_names = [out.get("name") for out in outputs_array if isinstance(out, dict) and "name" in out]
-        
-        if len(node_output_names) != len(expected_output_names):
-            errors.append(
-                f"Node {node_id} (type '{node_type}') has {len(node_output_names)} outputs, "
-                f"but node_info expects {len(expected_output_names)} outputs: {expected_output_names}"
-            )
         else:
-            # Check each output name matches
-            for i, output_name in enumerate(node_output_names):
-                if i < len(expected_output_names):
-                    expected_name = expected_output_names[i]
-                    if output_name != expected_name:
+            # Check input type compatibility using helper
+            expected_type = _get_node_input_type(node_type, input_name, node_info)
+            if expected_type and input_type != "AUTO":
+                if not _is_type_compatible(input_type, expected_type):
+                    errors.append(
+                        f"Node {node_id} (type '{node_type}') input '{input_name}' has type '{input_type}', "
+                        f"but node_info expects type '{expected_type}' (types are not compatible)"
+                    )
+
+            # Validate parameter value constraints
+            param_def = all_params[input_name]
+            value_errors = _validate_parameter_value(
+                node_id, node_type, input_name, param_def, node, node_info
+            )
+            errors.extend(value_errors)
+
+    # Validate output names using shared helper
+    outputs_array = node.get("outputs", [])
+    node_output_names = [out.get("name") for out in outputs_array if isinstance(out, dict) and "name" in out]
+    errors.extend(_validate_node_outputs(str(node_id), node_type, node_output_names, node_info))
+
+    # Check output type compatibility
+    expected_output_types = node_def.get("output", [])
+    if expected_output_types:
+        for i, out in enumerate(outputs_array):
+            if not isinstance(out, dict):
+                continue
+
+            output_type = out.get("type", "AUTO")
+            if i < len(expected_output_types):
+                expected_type = expected_output_types[i]
+                if output_type != "AUTO" and expected_type:
+                    if not _is_type_compatible(output_type, expected_type):
+                        output_name = out.get("name", f"output[{i}]")
                         errors.append(
-                            f"Node {node_id} (type '{node_type}') output[{i}] is '{output_name}', "
-                            f"but node_info expects '{expected_name}'"
+                            f"Node {node_id} (type '{node_type}') output '{output_name}' has type '{output_type}', "
+                            f"but node_info expects type '{expected_type}' (types are not compatible)"
                         )
-    
+
     return errors
+
+
+def _validate_parameter_value(
+    node_id: int,
+    node_type: str,
+    param_name: str,
+    param_def: Any,
+    node: Dict,
+    node_info: Dict
+) -> List[str]:
+    """
+    Validate parameter value against constraints from node_info for standard format.
+
+    Args:
+        node_id: Node ID
+        node_type: Node type
+        param_name: Parameter name
+        param_def: Parameter definition from node_info
+        node: Node dictionary
+        node_info: Node information dictionary
+
+    Returns:
+        List of error messages
+    """
+    # Get parameter value from widgets_values
+    widgets_values = node.get("widgets_values", [])
+    if not widgets_values:
+        return []
+
+    # Get parameter order from node_info to find index
+    node_def = node_info.get(node_type, {})
+    input_defs = node_def.get("input", {})
+    required_params = input_defs.get("required", {})
+    optional_params = input_defs.get("optional", {})
+
+    # Build parameter order (required first, then optional with links)
+    param_order = list(required_params.keys())
+
+    # Get inputs array to find optional params with links
+    inputs_array = node.get("inputs", [])
+    connected_input_names = set()
+    for inp in inputs_array:
+        if isinstance(inp, dict) and inp.get("link") is not None:
+            connected_input_names.add(inp.get("name"))
+
+    param_order.extend(p for p in optional_params.keys() if p in connected_input_names)
+
+    # Find parameter index in widgets_values
+    try:
+        param_index = param_order.index(param_name)
+        if param_index < len(widgets_values):
+            param_value = widgets_values[param_index]
+            return _validate_parameter_constraints(
+                param_value, param_def,
+                str(node_id), node_type, param_name
+            )
+    except ValueError:
+        pass  # Parameter not found in param_order
+
+    return []
+
+
+def _validate_lite_parameter_value(
+    node_name: str,
+    node_type: str,
+    param_name: str,
+    param_def: Any,
+    param_value: Any,
+    node_info: Dict
+) -> List[str]:
+    """
+    Validate parameter value against constraints from node_info for lite format.
+
+    Args:
+        node_name: Node name
+        node_type: Node type
+        param_name: Parameter name
+        param_def: Parameter definition from node_info
+        param_value: Parameter value from lite format
+        node_info: Node information dictionary
+
+    Returns:
+        List of error messages
+    """
+    return _validate_parameter_constraints(
+        param_value, param_def,
+        f"'{node_name}'", node_type, param_name
+    )
 
 
 def _validate_lite_connection_types(
@@ -852,31 +959,9 @@ def _validate_lite_connection_types(
     target_node_type = target_node.get("type")
     source_node_type = source_node.get("type")
 
-    # Get target input type from node_info
-    target_input_type = None
-    if target_node_type in node_info:
-        input_defs = node_info[target_node_type].get("input", {})
-        for category in ["required", "optional"]:
-            if category in input_defs and target_input_name in input_defs[category]:
-                param_def = input_defs[category][target_input_name]
-                if isinstance(param_def, list) and len(param_def) > 0:
-                    target_input_type = param_def[0]
-                    if isinstance(target_input_type, list):
-                        target_input_type = "STRING"  # Enum type
-                break
-
-    # Get source output type from node_info
-    source_output_type = None
-    if source_node_type in node_info:
-        output_types = node_info[source_node_type].get("output", [])
-        output_names = node_info[source_node_type].get("output_name", [])
-
-        if source_output_name in output_names:
-            name_idx = output_names.index(source_output_name)
-            if name_idx < len(output_types):
-                source_output_type = output_types[name_idx]
-        elif len(output_types) > 0:
-            source_output_type = output_types[0]  # Use first output as fallback
+    # Get types using helper functions
+    target_input_type = _get_node_input_type(target_node_type, target_input_name, node_info)
+    source_output_type = _get_node_output_type_by_name(source_node_type, source_output_name, node_info)
 
     # Check compatibility
     if target_input_type and source_output_type:
@@ -920,31 +1005,24 @@ def _validate_type_compatibility(
         if source_node_type not in node_info or target_node_type not in node_info:
             continue
 
-        # Get expected types from node_info
-        source_outputs = node_info[source_node_type].get("output", [])
-        target_inputs = node_info[target_node_type].get("input", {})
-
-        if source_idx >= len(source_outputs):
+        # Get expected types using helper functions
+        source_expected_type = _get_node_output_type(source_node_type, source_idx, node_info)
+        if source_expected_type is None:
             continue
 
-        source_expected_type = source_outputs[source_idx]
-
-        # Get target input definition
+        # Get target input name and type
         target_input_name = None
         target_inputs_list = target_node.get("inputs", [])
         if target_idx < len(target_inputs_list):
             target_input_name = target_inputs_list[target_idx].get("name")
 
-        target_expected_type = "AUTO"
+        target_expected_type = None
         if target_input_name:
-            for category in ["required", "optional"]:
-                if category in target_inputs and target_input_name in target_inputs[category]:
-                    param_def = target_inputs[category][target_input_name]
-                    if isinstance(param_def, list) and len(param_def) > 0:
-                        target_expected_type = param_def[0]
-                        if isinstance(target_expected_type, list):
-                            target_expected_type = "STRING"
-                    break
+            target_expected_type = _get_node_input_type(target_node_type, target_input_name, node_info)
+
+        # Default to AUTO if not found
+        if target_expected_type is None:
+            target_expected_type = "AUTO"
 
         # Validate type compatibility
         if not _is_type_compatible(source_expected_type, target_expected_type):
@@ -1125,6 +1203,309 @@ def _is_valid_uuid(id_string: str) -> bool:
         return True
     except (ValueError, AttributeError, TypeError):
         return False
+
+
+def _get_param_type_info(param_def: Any) -> Tuple[Optional[str], Optional[float], Optional[float], Optional[List]]:
+    """
+    Extract parameter type and constraints from parameter definition.
+
+    Args:
+        param_def: Parameter definition from node_info (typically a list)
+
+    Returns:
+        Tuple of (param_type, min_val, max_val, combo_options)
+    """
+    if not isinstance(param_def, list) or len(param_def) == 0:
+        return None, None, None, None
+
+    first_elem = param_def[0]
+    param_type = None
+    min_val = None
+    max_val = None
+    combo_options = None
+
+    if isinstance(first_elem, str):
+        param_type = first_elem
+    elif isinstance(first_elem, list):
+        param_type = "COMBO"
+        combo_options = first_elem
+
+    # Get constraints from second element (if present)
+    if len(param_def) > 1:
+        constraints = param_def[1]
+        if isinstance(constraints, dict):
+            min_val = constraints.get("min")
+            max_val = constraints.get("max")
+
+    return param_type, min_val, max_val, combo_options
+
+
+def _validate_numeric_range(
+    value: Any,
+    param_type: str,
+    min_val: Optional[float],
+    max_val: Optional[float],
+    node_identifier: str,
+    node_type: str,
+    param_name: str
+) -> List[str]:
+    """
+    Validate numeric parameter is within min/max range.
+
+    Args:
+        value: Parameter value to validate
+        param_type: Type of parameter ("INT" or "FLOAT")
+        min_val: Minimum allowed value
+        max_val: Maximum allowed value
+        node_identifier: Node identifier (id or name)
+        node_type: Node type
+        param_name: Parameter name
+
+    Returns:
+        List of error messages (empty if valid)
+    """
+    errors = []
+
+    if param_type == "INT":
+        if not isinstance(value, int):
+            try:
+                value = int(value)
+            except (ValueError, TypeError):
+                errors.append(
+                    f"Node {node_identifier} (type '{node_type}') parameter '{param_name}' "
+                    f"has invalid INT value: {repr(value)}"
+                )
+                return errors
+    elif param_type == "FLOAT":
+        if not isinstance(value, (int, float)):
+            try:
+                value = float(value)
+            except (ValueError, TypeError):
+                errors.append(
+                    f"Node {node_identifier} (type '{node_type}') parameter '{param_name}' "
+                    f"has invalid FLOAT value: {repr(value)}"
+                )
+                return errors
+
+    # Check range
+    if min_val is not None and value < min_val:
+        errors.append(
+            f"Node {node_identifier} (type '{node_type}') parameter '{param_name}' "
+            f"value {value} is less than minimum {min_val}"
+        )
+    if max_val is not None and value > max_val:
+        errors.append(
+            f"Node {node_identifier} (type '{node_type}') parameter '{param_name}' "
+            f"value {value} is greater than maximum {max_val}"
+        )
+
+    return errors
+
+
+def _validate_combo_options(
+    value: Any,
+    combo_options: List,
+    node_identifier: str,
+    node_type: str,
+    param_name: str
+) -> List[str]:
+    """
+    Validate COMBO parameter value is in allowed options.
+
+    Args:
+        value: Parameter value to validate
+        combo_options: List of allowed options
+        node_identifier: Node identifier (id or name)
+        node_type: Node type
+        param_name: Parameter name
+
+    Returns:
+        List of error messages (empty if valid)
+    """
+    if value not in combo_options:
+        return [
+            f"Node {node_identifier} (type '{node_type}') parameter '{param_name}' "
+            f"value '{value}' is not in allowed options: {combo_options}"
+        ]
+    return []
+
+
+def _validate_parameter_constraints(
+    param_value: Any,
+    param_def: Any,
+    node_identifier: str,
+    node_type: str,
+    param_name: str
+) -> List[str]:
+    """
+    Unified parameter validation against constraints from node_info.
+
+    This replaces both _validate_parameter_value and _validate_lite_parameter_value.
+
+    Checks:
+    1. INT/FLOAT: value is within min/max range
+    2. COMBO: value is in the options list
+
+    Args:
+        param_value: Parameter value to validate
+        param_def: Parameter definition from node_info
+        node_identifier: Node identifier (id or name)
+        node_type: Node type
+        param_name: Parameter name
+
+    Returns:
+        List of error messages (empty if valid)
+    """
+    errors = []
+
+    # Skip None/null values (they will use defaults)
+    if param_value is None:
+        return errors
+
+    # Extract parameter type and constraints
+    param_type, min_val, max_val, combo_options = _get_param_type_info(param_def)
+
+    if param_type is None:
+        return errors
+
+    # Validate based on type
+    if param_type in ("INT", "FLOAT"):
+        errors.extend(_validate_numeric_range(
+            param_value, param_type, min_val, max_val,
+            node_identifier, node_type, param_name
+        ))
+    elif param_type == "COMBO" and combo_options:
+        errors.extend(_validate_combo_options(
+            param_value, combo_options,
+            node_identifier, node_type, param_name
+        ))
+
+    return errors
+
+
+def _get_node_input_type(node_type: str, input_name: str, node_info: Dict) -> Optional[str]:
+    """
+    Get the expected input type for a node parameter from node_info.
+
+    Args:
+        node_type: Node type
+        input_name: Input parameter name
+        node_info: Node information dictionary
+
+    Returns:
+        Expected type string, or None if not found
+    """
+    if node_type not in node_info:
+        return None
+
+    input_defs = node_info[node_type].get("input", {})
+    for category in ["required", "optional"]:
+        if category in input_defs and input_name in input_defs[category]:
+            param_def = input_defs[category][input_name]
+            if isinstance(param_def, list) and len(param_def) > 0:
+                first_elem = param_def[0]
+                if isinstance(first_elem, str):
+                    return first_elem
+                elif isinstance(first_elem, list):
+                    return "STRING"  # COMBO type
+            break
+
+    return None
+
+
+def _get_node_output_type(node_type: str, output_idx: int, node_info: Dict) -> Optional[str]:
+    """
+    Get the expected output type for a node output from node_info.
+
+    Args:
+        node_type: Node type
+        output_idx: Output index
+        node_info: Node information dictionary
+
+    Returns:
+        Expected type string, or None if not found
+    """
+    if node_type not in node_info:
+        return None
+
+    output_types = node_info[node_type].get("output", [])
+    if output_idx < len(output_types):
+        return output_types[output_idx]
+
+    return None
+
+
+def _get_node_output_type_by_name(node_type: str, output_name: str, node_info: Dict) -> Optional[str]:
+    """
+    Get the expected output type for a named node output from node_info.
+
+    Args:
+        node_type: Node type
+        output_name: Output name
+        node_info: Node information dictionary
+
+    Returns:
+        Expected type string, or None if not found
+    """
+    if node_type not in node_info:
+        return None
+
+    output_types = node_info[node_type].get("output", [])
+    output_names = node_info[node_type].get("output_name", [])
+
+    if output_name in output_names:
+        name_idx = output_names.index(output_name)
+        if name_idx < len(output_types):
+            return output_types[name_idx]
+    elif len(output_types) > 0:
+        return output_types[0]  # Use first output as fallback
+
+    return None
+
+
+def _validate_node_outputs(
+    node_identifier: str,
+    node_type: str,
+    actual_outputs: List[str],
+    node_info: Dict
+) -> List[str]:
+    """
+    Validate node outputs match node_info definition.
+
+    Args:
+        node_identifier: Node identifier (id or name)
+        node_type: Node type
+        actual_outputs: List of actual output names
+        node_info: Node information dictionary
+
+    Returns:
+        List of error messages (empty if valid)
+    """
+    errors = []
+
+    if node_type not in node_info:
+        return errors
+
+    node_def = node_info[node_type]
+    expected_output_names = node_def.get("output_name", [])
+
+    if expected_output_names:
+        if len(actual_outputs) != len(expected_output_names):
+            errors.append(
+                f"Node {node_identifier} (type '{node_type}') has {len(actual_outputs)} outputs, "
+                f"but node_info expects {len(expected_output_names)} outputs: {expected_output_names}"
+            )
+        else:
+            for i, output_name in enumerate(actual_outputs):
+                if i < len(expected_output_names):
+                    expected_name = expected_output_names[i]
+                    if output_name != expected_name:
+                        errors.append(
+                            f"Node {node_identifier} (type '{node_type}') output[{i}] is '{output_name}', "
+                            f"but node_info expects '{expected_name}'"
+                        )
+
+    return errors
 
 
 # ============================================================================

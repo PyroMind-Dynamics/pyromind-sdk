@@ -798,6 +798,29 @@ class TestValidationFunctions:
         # Has warnings about last_node_id but should be valid (only errors make it invalid)
         assert is_valid is True or any("Warning:" in e for e in errors)
 
+    def test_validate_standard_format_null_links(self):
+        """Test validating standard format with null links (should be allowed)."""
+        standard = {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "nodes": [
+                {
+                    "id": 1,
+                    "type": "NodeA",
+                    "inputs": [],
+                    "outputs": [
+                        {"name": "out1", "type": "STRING", "links": None},  # null is allowed
+                        {"name": "out2", "type": "STRING", "links": []}    # empty list is also allowed
+                    ]
+                }
+            ],
+            "links": []
+        }
+
+        is_valid, errors = validate_standard_format(standard)
+        # Should be valid - null links are allowed
+        error_list = [e for e in errors if not e.startswith("Warning:")]
+        assert len(error_list) == 0
+
     def test_validate_standard_format_missing_fields(self, capsys):
         """Test validating standard format with missing fields."""
         standard = {
@@ -823,6 +846,213 @@ class TestValidationFunctions:
         is_valid, errors = validate_standard_format(standard)
         assert is_valid is False
         assert any("references unknown source node" in e for e in errors)
+
+    def test_validate_parameter_value_constraints(self):
+        """Test parameter value constraint validation (INT/FLOAT ranges, COMBO options)."""
+        node_info = {
+            "TestNode": {
+                "input": {
+                    "required": {
+                        "gpu_count": ["INT", {"min": 1, "max": 8}],
+                        "guidance_scale": ["FLOAT", {"min": 0.1, "max": 20.0}],
+                        "model_type": [["qwen3_vl", "qwen2.5_vl"], {"default": "qwen3_vl"}]
+                    }
+                },
+                "output": ["STRING"],
+                "output_name": ["output"]
+            }
+        }
+
+        # Test INT out of range
+        workflow_int_range = {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "nodes": [
+                {
+                    "id": 1,
+                    "type": "TestNode",
+                    "inputs": [
+                        {"name": "gpu_count", "type": "INT", "link": None},
+                        {"name": "guidance_scale", "type": "FLOAT", "link": None},
+                        {"name": "model_type", "type": "COMBO", "link": None}
+                    ],
+                    "outputs": [
+                        {"name": "output", "type": "STRING", "links": []}
+                    ],
+                    "widgets_values": [10, 2.0, "qwen3_vl"]  # gpu_count=10 > max=8
+                }
+            ],
+            "links": []
+        }
+
+        is_valid, errors = validate_standard_format(workflow_int_range, node_info=node_info)
+        assert is_valid is False
+        assert any("gpu_count" in e and "greater than maximum" in e for e in errors)
+
+        # Test FLOAT out of range
+        workflow_float_range = {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "nodes": [
+                {
+                    "id": 1,
+                    "type": "TestNode",
+                    "inputs": [
+                        {"name": "gpu_count", "type": "INT", "link": None},
+                        {"name": "guidance_scale", "type": "FLOAT", "link": None},
+                        {"name": "model_type", "type": "COMBO", "link": None}
+                    ],
+                    "outputs": [
+                        {"name": "output", "type": "STRING", "links": []}
+                    ],
+                    "widgets_values": [4, 25.0, "qwen3_vl"]  # guidance_scale=25.0 > max=20.0
+                }
+            ],
+            "links": []
+        }
+
+        is_valid, errors = validate_standard_format(workflow_float_range, node_info=node_info)
+        assert is_valid is False
+        assert any("guidance_scale" in e and "greater than maximum" in e for e in errors)
+
+        # Test COMBO invalid option
+        workflow_combo_invalid = {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "nodes": [
+                {
+                    "id": 1,
+                    "type": "TestNode",
+                    "inputs": [
+                        {"name": "gpu_count", "type": "INT", "link": None},
+                        {"name": "guidance_scale", "type": "FLOAT", "link": None},
+                        {"name": "model_type", "type": "COMBO", "link": None}
+                    ],
+                    "outputs": [
+                        {"name": "output", "type": "STRING", "links": []}
+                    ],
+                    "widgets_values": [4, 2.0, "invalid_model"]  # Not in options
+                }
+            ],
+            "links": []
+        }
+
+        is_valid, errors = validate_standard_format(workflow_combo_invalid, node_info=node_info)
+        assert is_valid is False
+        assert any("model_type" in e and "not in allowed options" in e for e in errors)
+
+        # Test valid values
+        workflow_valid = {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "nodes": [
+                {
+                    "id": 1,
+                    "type": "TestNode",
+                    "inputs": [
+                        {"name": "gpu_count", "type": "INT", "link": None},
+                        {"name": "guidance_scale", "type": "FLOAT", "link": None},
+                        {"name": "model_type", "type": "COMBO", "link": None}
+                    ],
+                    "outputs": [
+                        {"name": "output", "type": "STRING", "links": []}
+                    ],
+                    "widgets_values": [4, 2.0, "qwen3_vl"]  # All valid
+                }
+            ],
+            "links": []
+        }
+
+        is_valid, errors = validate_standard_format(workflow_valid, node_info=node_info)
+        error_list = [e for e in errors if not e.startswith("Warning:")]
+        # Should not have constraint errors
+        constraint_errors = [e for e in error_list if "greater than" in e or "less than" in e or "not in allowed options" in e]
+        assert len(constraint_errors) == 0
+
+    def test_validate_type_compatibility(self):
+        """Test input/output type compatibility validation with node_info."""
+        node_info = {
+            "TestNode": {
+                "input": {
+                    "required": {
+                        "dataset": ["STRING"],
+                        "model_path": ["MODEL"]
+                    }
+                },
+                "output": ["STRING"],
+                "output_name": ["output"]
+            }
+        }
+
+        # Test with incompatible input type
+        workflow_incompatible_input = {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "nodes": [
+                {
+                    "id": 1,
+                    "type": "TestNode",
+                    "inputs": [
+                        {"name": "dataset", "type": "INT", "link": None},  # Wrong type
+                        {"name": "model_path", "type": "MODEL", "link": None}
+                    ],
+                    "outputs": [
+                        {"name": "output", "type": "STRING", "links": []}
+                    ],
+                    "widgets_values": [123, None]
+                }
+            ],
+            "links": []
+        }
+
+        is_valid, errors = validate_standard_format(workflow_incompatible_input, node_info=node_info)
+        assert is_valid is False
+        assert any("input 'dataset' has type 'INT'" in e and "expects type 'STRING'" in e for e in errors)
+
+        # Test with incompatible output type
+        workflow_incompatible_output = {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "nodes": [
+                {
+                    "id": 1,
+                    "type": "TestNode",
+                    "inputs": [
+                        {"name": "dataset", "type": "STRING", "link": None},
+                        {"name": "model_path", "type": "MODEL", "link": None}
+                    ],
+                    "outputs": [
+                        {"name": "output", "type": "INT", "links": []}  # Wrong type
+                    ],
+                    "widgets_values": ["test", None]
+                }
+            ],
+            "links": []
+        }
+
+        is_valid, errors = validate_standard_format(workflow_incompatible_output, node_info=node_info)
+        assert is_valid is False
+        assert any("output 'output' has type 'INT'" in e and "expects type 'STRING'" in e for e in errors)
+
+        # Test with compatible types
+        workflow_compatible = {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "nodes": [
+                {
+                    "id": 1,
+                    "type": "TestNode",
+                    "inputs": [
+                        {"name": "dataset", "type": "STRING", "link": None},
+                        {"name": "model_path", "type": "MODEL", "link": None}
+                    ],
+                    "outputs": [
+                        {"name": "output", "type": "STRING", "links": []}
+                    ],
+                    "widgets_values": ["test", None]
+                }
+            ],
+            "links": []
+        }
+
+        is_valid, errors = validate_standard_format(workflow_compatible, node_info=node_info)
+        error_list = [e for e in errors if not e.startswith("Warning:")]
+        # Should not have type compatibility errors
+        type_errors = [e for e in error_list if "type" in e.lower() and "compatible" in e.lower()]
+        assert len(type_errors) == 0
 
     def test_validate_widgets_values_order(self):
         """Test widgets_values order validation with node_info."""

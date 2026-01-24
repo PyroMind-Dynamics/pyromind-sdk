@@ -94,7 +94,7 @@
       "inputs": [
         {
           "name": "model_path",
-          "type": "MODEL",
+          "type": "STRING",
           "link": 1
         },
         {
