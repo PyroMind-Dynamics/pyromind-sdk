@@ -522,6 +522,8 @@ class LinkBuilder:
         
         # If we have param_order, use it to determine the correct index
         # This matches the order used in _build_standard_inputs
+        # IMPORTANT: Only connected inputs (with links) are in inputs_array
+        # Unconnected inputs (direct values) are NOT in inputs_array, only in widgets_values
         if param_order and target_input_name in param_order:
             target_param_idx = param_order.index(target_input_name)
             input_idx = 0
@@ -529,31 +531,20 @@ class LinkBuilder:
             # Count inputs that come before this one in param_order
             # Only count those that will actually be in inputs_array
             # Logic matches _build_standard_inputs:
-            # - All inputs in lite_inputs are in inputs_array
-            # - Optional inputs from node_info (with widgets) are in inputs_array
-            # Get required and optional parameter sets
-            required_params = set()
-            optional_params = set()
-            if self.type_resolver.node_info and node_type in self.type_resolver.node_info:
-                node_def = self.type_resolver.node_info[node_type]
-                input_defs = node_def.get("input", {})
-                if "required" in input_defs:
-                    required_params = set(input_defs["required"].keys())
-                if "optional" in input_defs:
-                    optional_params = set(input_defs["optional"].keys())
-            
+            # - Only connected inputs (have link) are in inputs_array
+            # - Unconnected inputs (direct values) are NOT in inputs_array
             for i in range(target_param_idx):
                 param_name = param_order[i]
                 
                 # Check if this parameter should be in inputs_array
+                # Only connected inputs are in inputs_array
                 should_be_in_inputs = False
                 
                 if param_name in lite_inputs:
-                    # If in lite_inputs, it's in inputs_array (connection or value)
-                    should_be_in_inputs = True
-                elif param_name in optional_params:
-                    # Optional input that should have a widget - in inputs_array
-                    should_be_in_inputs = True
+                    input_value = lite_inputs[param_name]
+                    # Only if it's a connection (has node_id), it's in inputs_array
+                    if isinstance(input_value, dict) and "node_id" in input_value:
+                        should_be_in_inputs = True
                 
                 if should_be_in_inputs:
                     input_idx += 1
@@ -898,12 +889,26 @@ class WorkflowLiteConverter:
         # Generate workflow ID (UUID format)
         workflow_id = self._generate_workflow_id(original_workflow, lite)
 
+        # Calculate last_node_id and last_link_id
+        # last_node_id should be the maximum node ID, not the node count
+        last_node_id = 0
+        if nodes:
+            last_node_id = max(node.get("id", 0) for node in nodes)
+        
+        # last_link_id should be the maximum link ID, not the link count
+        last_link_id = 0
+        if links:
+            # Link format: [link_id, source_id, source_idx, target_id, target_idx, link_type]
+            link_ids = [link[0] for link in links if len(link) > 0 and isinstance(link[0], (int, float))]
+            if link_ids:
+                last_link_id = max(link_ids)
+
         # Create standard workflow
         standard = {
             "id": workflow_id,
             "revision": 0,
-            "last_node_id": len(nodes),
-            "last_link_id": len(links),
+            "last_node_id": last_node_id,
+            "last_link_id": last_link_id,
             "nodes": nodes,
             "links": links,
             "groups": [],
