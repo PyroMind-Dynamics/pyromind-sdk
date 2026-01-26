@@ -1043,14 +1043,100 @@ class WorkflowLiteConverter:
             Dictionary mapping parameter names to values
         """
         parameters = {}
-        param_order = self.type_resolver.get_parameter_order(node_type)
 
-        for i, value in enumerate(widgets_values):
-            if i < len(param_order):
-                param_name = param_order[i]
-                parameters[param_name] = value
+        # Get node definition
+        if node_type not in self.type_resolver.node_info:
+            return {}
+
+        node_def = self.type_resolver.node_info[node_type]
+        input_defs = node_def.get("input", {})
+        required_params = input_defs.get("required", {})
+        optional_params = input_defs.get("optional", {})
+
+        # Helper function to check if a type is widget-able
+        def is_widgetable_type(param_type: str) -> bool:
+            """Check if parameter type is widget-able (primitive type)."""
+            widgetable_types = {"STRING", "INT", "FLOAT", "BOOLEAN", "COMBO", "ENV"}
+            return param_type in widgetable_types
+
+        # Helper function to get parameter type
+        def get_param_type(param_def: Any) -> str:
+            """Get parameter type from node_info definition."""
+            if isinstance(param_def, list) and len(param_def) > 0:
+                first_elem = param_def[0]
+                if isinstance(first_elem, str):
+                    return first_elem
+                elif isinstance(first_elem, list):
+                    return "COMBO"
+            return "STRING"
+
+        # widgets_values is in to_standard order:
+        # 1. required + widget-able (STRING, INT, etc.)
+        # 2. required + non-widget (MODEL, VAE, etc.)
+        # 3. optional + widget-able (only those with connections)
+        # 4. optional + non-widget (only those with connections)
+        # Note: optional params without connections are NOT in widgets_values
+
+        # Collect parameters in to_standard order
+        required_widgetable = []
+        required_nonwidget = []
+        optional_widgetable_in_widgets = []  # optional widget-able that are in widgets_values
+        optional_nonwidget_in_widgets = []  # optional non-widget that are in widgets_values
+
+        # Process required parameters
+        for param_name, param_def in required_params.items():
+            param_type = get_param_type(param_def)
+            if is_widgetable_type(param_type):
+                required_widgetable.append((param_name, param_type))
             else:
-                parameters[f"param_{i}"] = value
+                required_nonwidget.append((param_name, param_type))
+
+        # Process optional parameters (only those with connections are in widgets_values)
+        for param_name, param_def in optional_params.items():
+            if param_name not in input_connections:
+                continue  # Not in widgets_values
+            param_type = get_param_type(param_def)
+            if is_widgetable_type(param_type):
+                optional_widgetable_in_widgets.append((param_name, param_type))
+            else:
+                optional_nonwidget_in_widgets.append((param_name, param_type))
+
+        # Map widgets_values to parameters in to_standard order
+        widget_idx = 0
+
+        # 1. required + widget-able
+        for param_name, param_type in required_widgetable:
+            if widget_idx >= len(widgets_values):
+                break
+            if param_name not in input_connections:
+                # Non-connected: extract actual value
+                parameters[param_name] = widgets_values[widget_idx]
+            # Connected: skip (will be added via input_connections)
+            widget_idx += 1
+
+        # 2. required + non-widget
+        for param_name, param_type in required_nonwidget:
+            if widget_idx >= len(widgets_values):
+                break
+            if param_name not in input_connections:
+                # Non-connected: extract actual value
+                parameters[param_name] = widgets_values[widget_idx]
+            # Connected: skip (will be added via input_connections)
+            widget_idx += 1
+
+        # 3. optional + widget-able (with connections)
+        for param_name, param_type in optional_widgetable_in_widgets:
+            if widget_idx >= len(widgets_values):
+                break
+            # These all have connections, so skip (will be added via input_connections)
+            widget_idx += 1
+
+        # 4. optional + non-widget (with connections)
+        for param_name, param_type in optional_nonwidget_in_widgets:
+            if widget_idx >= len(widgets_values):
+                break
+            # These all have connections, so skip (will be added via input_connections)
+            widget_idx += 1
 
         return parameters
 
@@ -1322,10 +1408,23 @@ class WorkflowLiteConverter:
         """
         outputs_array = []
 
+        # Get expected output names from node_info if available
+        expected_output_names = None
+        if node_type in self.type_resolver.node_info:
+            node_def = self.type_resolver.node_info[node_type]
+            output_names = node_def.get("output_name", [])
+            if output_names and len(output_names) >= len(lite_outputs):
+                expected_output_names = output_names
+
         for idx, output_name in enumerate(lite_outputs):
-            output_type = self.type_resolver.get_output_type(node_type, idx, output_name)
+            # Use expected output name from node_info if available
+            actual_name = output_name
+            if expected_output_names and idx < len(expected_output_names):
+                actual_name = expected_output_names[idx]
+
+            output_type = self.type_resolver.get_output_type(node_type, idx, actual_name)
             outputs_array.append({
-                "name": output_name,
+                "name": actual_name,
                 "type": output_type,
                 "links": []
             })

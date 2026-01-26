@@ -443,7 +443,14 @@ class TestParameterExtraction:
                         {
                             "name": "model",
                             "type": "COMBO",
+                            "link": None,
                             "widget": {"name": "model"}
+                        },
+                        {
+                            "name": "save_path",
+                            "type": "STRING",
+                            "link": None,
+                            "widget": {"name": "save_path"}
                         }
                     ],
                     "outputs": [
@@ -461,12 +468,17 @@ class TestParameterExtraction:
             "links": []
         }
 
+        # Correct node_info format with required/optional structure
         node_info = {
             "CloneAndCacheModel": {
                 "input": {
-                    "model": "COMBO",
-                    "save_path": "STRING"
-                }
+                    "required": {
+                        "model": [["Qwen/Qwen3-0.6B", "Qwen/Qwen3-VL-2B-Instruct"]],
+                        "save_path": ["STRING", {"default": "/workspace/models/"}]
+                    }
+                },
+                "output": ["MODEL"],
+                "output_name": ["model_path"]
             }
         }
 
@@ -475,6 +487,9 @@ class TestParameterExtraction:
 
         inputs = lite["nodes"]["clone_and_cache_model"]["inputs"]
         assert len(inputs) > 0
+        # Check that non-connected parameters are extracted
+        assert inputs["model"] == "Qwen/Qwen3-0.6B"
+        assert inputs["save_path"] == "/workspace/models/"
 
     def test_parameter_extraction_fallback(self):
         """Test parameter extraction fallback without node_info."""
@@ -508,6 +523,462 @@ class TestParameterExtraction:
         node_key = list(lite["nodes"].keys())[0]
         inputs = lite["nodes"][node_key]["inputs"]
         assert len(inputs) > 0
+
+
+class TestWidgetsValuesExtraction:
+    """Test widgets_values extraction logic in to_lite conversion.
+
+    Tests the fix for proper extraction of parameter values from widgets_values.
+    Key insight: widgets_values follows to_standard order:
+    1. required + widget-able (STRING, INT, FLOAT, BOOLEAN, COMBO, ENV)
+    2. required + non-widget (MODEL, VAE, CONDITIONING, LATENT, IMAGE)
+    3. optional + widget-able (only those WITH connections)
+    4. optional + non-widget (only those WITH connections)
+    5. optional + NO connections → NOT in widgets_values
+
+    Rules:
+    - Connected parameters: value is placeholder ('' or default), should SKIP
+    - Non-connected parameters: value is actual value, should EXTRACT
+    """
+
+    def test_widgets_values_order_required_widgetable_then_nonwidget(self):
+        """Test that widgets_values follows: required widget-able, then required non-widget."""
+        # Mock node_info simulating node structure
+        node_info = {
+            "TestNode": {
+                "input": {
+                    "required": {
+                        "string_param": ["STRING", {"default": "default_value"}],
+                        "int_param": ["INT", {"default": 0}],
+                        "model_param": ["MODEL"],  # non-widget type
+                    },
+                    "optional": {}
+                }
+            }
+        }
+
+        # Simulate widgets_values in to_standard order:
+        # [0] string_param (widget-able)
+        # [1] int_param (widget-able)
+        # [2] model_param (non-widget)
+        widgets_values = ["actual_string", 42, None]
+        input_connections = {}  # No connections
+
+        converter = WorkflowLiteConverter(node_info=node_info)
+
+        # Call the extraction method
+        result = converter._extract_using_node_info(
+            "TestNode",
+            widgets_values,
+            input_connections
+        )
+
+        # Should extract all non-connected parameters
+        assert result["string_param"] == "actual_string"
+        assert result["int_param"] == 42
+        assert result["model_param"] is None
+
+    def test_widgets_values_skips_connected_parameters(self):
+        """Test that connected parameters are skipped (they're placeholders)."""
+        node_info = {
+            "TestNode": {
+                "input": {
+                    "required": {
+                        "connected_string": ["STRING"],
+                        "unconnected_string": ["STRING"],
+                        "connected_model": ["MODEL"],
+                        "unconnected_model": ["MODEL"],
+                    },
+                    "optional": {}
+                }
+            }
+        }
+
+        # widgets_values in to_standard order:
+        # required widget-able: connected_string, unconnected_string
+        # required non-widget: connected_model, unconnected_model
+        widgets_values = ["", "actual_unconnected", "", "actual_model"]
+        input_connections = {
+            "connected_string": {"node_id": 1, "output_name": "output"},
+            "connected_model": {"node_id": 2, "output_name": "model"},
+        }
+
+        converter = WorkflowLiteConverter(node_info=node_info)
+
+        result = converter._extract_using_node_info(
+            "TestNode",
+            widgets_values,
+            input_connections
+        )
+
+        # Should only extract non-connected parameters
+        assert "connected_string" not in result  # Skipped (has connection)
+        assert result["unconnected_string"] == "actual_unconnected"  # Extracted
+        assert "connected_model" not in result  # Skipped (has connection)
+        assert result["unconnected_model"] == "actual_model"  # Extracted
+
+    def test_widgets_values_excludes_optional_without_connections(self):
+        """Test that optional parameters without connections are NOT in widgets_values."""
+        node_info = {
+            "TestNode": {
+                "input": {
+                    "required": {
+                        "required_string": ["STRING"],
+                    },
+                    "optional": {
+                        "optional_with_conn": ["STRING"],
+                        "optional_without_conn": ["STRING"],  # Should NOT be in widgets_values
+                    }
+                }
+            }
+        }
+
+        # widgets_values should NOT include optional_without_conn
+        # Order: required widget-able, optional widget-able (with connections)
+        widgets_values = ["req_value", "opt_conn_value"]
+        input_connections = {
+            "optional_with_conn": {"node_id": 1, "output_name": "output"},
+        }
+
+        converter = WorkflowLiteConverter(node_info=node_info)
+
+        result = converter._extract_using_node_info(
+            "TestNode",
+            widgets_values,
+            input_connections
+        )
+
+        # Should extract required and connected optional
+        assert result["required_string"] == "req_value"
+        assert "optional_with_conn" not in result  # Skipped (has connection)
+        assert "optional_without_conn" not in result  # Not in widgets_values at all
+
+    def test_widgets_values_real_gui_sft_training_scenario(self):
+        """Test with real GUISFTTrainingNode scenario from the bug."""
+        # Real node_info structure for GUISFTTrainingNode
+        node_info = {
+            "GUISFTTrainingNode": {
+                "input": {
+                    "required": {
+                        "dataset": ["STRING"],
+                        "model_path": ["MODEL"],
+                        "model_type": [["qwen3_vl", "qwen2.5_vl"]],  # COMBO
+                        "output_dir": ["STRING"],
+                        "gpu_count": ["INT"],
+                        "gpu_product": [["NVIDIA-H100-NVL", "NVIDIA-L40S"]],  # COMBO
+                    },
+                    "optional": {
+                        "training_standard_config": ["STRING"],
+                        "lora_config": ["STRING"],
+                        "training_advanced_config": ["STRING"],
+                        "wandb_config": ["STRING"],
+                        "environment": ["ENV"],
+                    }
+                }
+            }
+        }
+
+        # Real widgets_values from workflow.json (10 elements)
+        # Order: required widget-able, then optional widget-able with connections
+        widgets_values = [
+            "",  # [0] dataset (connected)
+            "qwen3_vl",  # [1] model_type (not connected, actual value)
+            "/workspace/checkpoints/qwen3vl_lora",  # [2] output_dir (not connected)
+            2,  # [3] gpu_count (not connected)
+            "NVIDIA-H100-NVL",  # [4] gpu_product (not connected)
+            "",  # [5] model_path (connected MODEL, placeholder)
+            "",  # [6] training_standard_config (connected)
+            "",  # [7] lora_config (connected)
+            "",  # [8] training_advanced_config (connected)
+            "",  # [9] wandb_config (connected)
+            # environment (optional, no connection) → NOT in widgets_values
+        ]
+
+        input_connections = {
+            "dataset": {"node_id": 3, "output_name": "dataset"},
+            "model_path": {"node_id": 1, "output_name": "model_path"},
+            "training_standard_config": {"node_id": 4, "output_name": "training_standard_config"},
+            "lora_config": {"node_id": 0, "output_name": "lora_config"},
+            "training_advanced_config": {"node_id": 5, "output_name": "training_advanced_config"},
+            "wandb_config": {"node_id": 6, "output_name": "wandb_config"},
+        }
+
+        converter = WorkflowLiteConverter(node_info=node_info)
+
+        result = converter._extract_using_node_info(
+            "GUISFTTrainingNode",
+            widgets_values,
+            input_connections
+        )
+
+        # Should only extract non-connected required parameters
+        assert result["model_type"] == "qwen3_vl"
+        assert result["output_dir"] == "/workspace/checkpoints/qwen3vl_lora"
+        assert result["gpu_count"] == 2
+        assert result["gpu_product"] == "NVIDIA-H100-NVL"
+
+        # Connected parameters should be skipped
+        assert "dataset" not in result
+        assert "model_path" not in result
+        assert "training_standard_config" not in result
+        assert "lora_config" not in result
+        assert "training_advanced_config" not in result
+        assert "wandb_config" not in result
+
+        # Optional without connection should not be in result
+        assert "environment" not in result
+
+    def test_widgets_values_mixed_types_and_connections(self):
+        """Test mixed types with various connection states."""
+        node_info = {
+            "MixedNode": {
+                "input": {
+                    "required": {
+                        "req_string": ["STRING"],
+                        "req_int": ["INT"],
+                        "req_model": ["MODEL"],
+                    },
+                    "optional": {
+                        "opt_string_conn": ["STRING"],
+                        "opt_string_noconn": ["STRING"],
+                        "opt_model_conn": ["MODEL"],
+                    }
+                }
+            }
+        }
+
+        # Order: req_string, req_int (widget-able), req_model (non-widget),
+        #       opt_string_conn (widget-able, has conn), opt_model_conn (non-widget, has conn)
+        # opt_string_noconn (no conn) → NOT in widgets_values
+        widgets_values = [
+            "req_string_val",  # [0] req_string (not connected)
+            42,  # [1] req_int (not connected)
+            None,  # [2] req_model (not connected MODEL)
+            "",  # [3] opt_string_conn (connected, placeholder)
+            "",  # [4] opt_model_conn (connected MODEL, placeholder)
+        ]
+
+        input_connections = {
+            "opt_string_conn": {"node_id": 1, "output_name": "output"},
+            "opt_model_conn": {"node_id": 2, "output_name": "model"},
+        }
+
+        converter = WorkflowLiteConverter(node_info=node_info)
+
+        result = converter._extract_using_node_info(
+            "MixedNode",
+            widgets_values,
+            input_connections
+        )
+
+        # Extract non-connected required
+        assert result["req_string"] == "req_string_val"
+        assert result["req_int"] == 42
+        assert result["req_model"] is None
+
+        # Skip connected optional
+        assert "opt_string_conn" not in result
+        assert "opt_model_conn" not in result
+
+        # Optional without connection not in widgets_values
+        assert "opt_string_noconn" not in result
+
+
+class TestWidgetsValuesRoundTrip:
+    """Test round-trip conversion with widgets_values."""
+
+    def test_round_trip_preserves_non_connected_values(self):
+        """Test that non-connected parameter values are preserved in round-trip."""
+        node_info = {
+            "SimpleNode": {
+                "input": {
+                    "required": {
+                        "param1": ["STRING"],
+                        "param2": ["INT"],
+                        "model_input": ["MODEL"],
+                    },
+                    "optional": {
+                        "opt_param": ["STRING"],
+                    }
+                },
+                "output": ["STRING"],
+                "output_name": ["output"]
+            }
+        }
+
+        # Standard format workflow
+        standard = {
+            "id": "test-workflow",
+            "nodes": [
+                {
+                    "id": 1,
+                    "type": "SimpleNode",
+                    "pos": [0, 0],
+                    "size": [270, 82],
+                    "flags": {},
+                    "order": 0,
+                    "mode": 0,
+                    "inputs": [
+                        {
+                            "name": "param1",
+                            "type": "STRING",
+                            "link": None,
+                            "widget": {"name": "param1"}
+                        },
+                        {
+                            "name": "param2",
+                            "type": "INT",
+                            "link": None,
+                            "widget": {"name": "param2"}
+                        },
+                        {
+                            "name": "model_input",
+                            "type": "MODEL",
+                            "link": None,
+                            "widget": {"name": "model_input"}
+                        },
+                    ],
+                    "outputs": [
+                        {
+                            "name": "output",
+                            "type": "STRING",
+                            "links": []
+                        }
+                    ],
+                    "properties": {},
+                    "widgets_values": ["test_value", 123, None]  # param1, param2, model_input
+                }
+            ],
+            "links": []
+        }
+
+        converter = WorkflowLiteConverter(node_info=node_info)
+
+        # Convert to lite
+        lite = converter.to_lite(standard)
+
+        # Check that non-connected values are preserved
+        assert lite["nodes"]["simple"]["inputs"]["param1"] == "test_value"
+        assert lite["nodes"]["simple"]["inputs"]["param2"] == 123
+        assert lite["nodes"]["simple"]["inputs"]["model_input"] is None
+
+    def test_round_trip_with_connected_and_unconnected(self):
+        """Test round-trip with mix of connected and unconnected parameters."""
+        node_info = {
+            "TestNode": {
+                "input": {
+                    "required": {
+                        "connected_param": ["STRING"],
+                        "unconnected_param": ["STRING"],
+                        "connected_model": ["MODEL"],
+                    },
+                    "optional": {
+                        "opt_with_conn": ["STRING"],
+                    }
+                },
+                "output": ["STRING"],
+                "output_name": ["output"]
+            }
+        }
+
+        # Create source nodes that links will connect to
+        standard = {
+            "id": "test",
+            "nodes": [
+                {
+                    "id": 2,
+                    "type": "SourceNode1",
+                    "pos": [0, 0],
+                    "size": [270, 82],
+                    "flags": {},
+                    "order": 0,
+                    "mode": 0,
+                    "inputs": [],
+                    "outputs": [{"name": "output", "type": "STRING", "links": []}],
+                    "properties": {},
+                    "widgets_values": []
+                },
+                {
+                    "id": 3,
+                    "type": "SourceNode2",
+                    "pos": [0, 0],
+                    "size": [270, 82],
+                    "flags": {},
+                    "order": 0,
+                    "mode": 0,
+                    "inputs": [],
+                    "outputs": [{"name": "output", "type": "MODEL", "links": []}],
+                    "properties": {},
+                    "widgets_values": []
+                },
+                {
+                    "id": 4,
+                    "type": "SourceNode3",
+                    "pos": [0, 0],
+                    "size": [270, 82],
+                    "flags": {},
+                    "order": 0,
+                    "mode": 0,
+                    "inputs": [],
+                    "outputs": [{"name": "output", "type": "STRING", "links": []}],
+                    "properties": {},
+                    "widgets_values": []
+                },
+                {
+                    "id": 1,
+                    "type": "TestNode",
+                    "pos": [0, 0],
+                    "size": [270, 82],
+                    "flags": {},
+                    "order": 0,
+                    "mode": 0,
+                    "inputs": [
+                        {
+                            "name": "connected_param",
+                            "type": "STRING",
+                            "link": 1,
+                            "widget": {"name": "connected_param"}
+                        },
+                        {
+                            "name": "unconnected_param",
+                            "type": "STRING",
+                            "link": None,
+                            "widget": {"name": "unconnected_param"}
+                        },
+                        {
+                            "name": "connected_model",
+                            "type": "MODEL",
+                            "link": 2,
+                            "widget": {"name": "connected_model"}
+                        },
+                        {
+                            "name": "opt_with_conn",
+                            "type": "STRING",
+                            "link": 3,
+                            "widget": {"name": "opt_with_conn"}
+                        },
+                    ],
+                    "outputs": [{"name": "output", "type": "STRING", "links": []}],
+                    "properties": {},
+                    "widgets_values": ["", "my_value", "", ""]  # Connected params have placeholders
+                }
+            ],
+            "links": [
+                [1, 2, 0, 1, 0, "STRING"],
+                [2, 3, 0, 1, 2, "MODEL"],
+                [3, 4, 0, 1, 3, "STRING"],
+            ]
+        }
+
+        converter = WorkflowLiteConverter(node_info=node_info)
+        lite = converter.to_lite(standard)
+
+        # Check lite format
+        lite_node = lite["nodes"]["test"]
+        assert lite_node["inputs"]["connected_param"] == {"node_id": 2, "output_name": "output"}
+        assert lite_node["inputs"]["unconnected_param"] == "my_value"
+        assert lite_node["inputs"]["connected_model"] == {"node_id": 3, "output_name": "output"}
+        assert lite_node["inputs"]["opt_with_conn"] == {"node_id": 4, "output_name": "output"}
 
 
 class TestValidationFunctions:
