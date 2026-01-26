@@ -1336,51 +1336,27 @@ class WorkflowLiteConverter:
         
         inputs_to_add = {}  # name -> input_dict
         
-        # Step 1: Add all inputs that exist in lite format
-        # This includes both required and optional parameters
+        # Step 1: Add only connected inputs to inputs array
+        # In PyroMind standard format:
+        # - Connected inputs (have link) -> appear in inputs array
+        # - Unconnected inputs (direct values) -> ONLY in widgets_values, NOT in inputs array
         for input_name, input_value in lite_inputs.items():
-            input_type = self.type_resolver.get_input_type(node_type, input_name)
-            
             if isinstance(input_value, dict) and "node_id" in input_value:
                 # Connection - must be in inputs array
+                input_type = self.type_resolver.get_input_type(node_type, input_name)
                 input_dict = {
                     "name": input_name,
                     "type": input_type,
                     "link": None  # Will be filled later
                 }
-                # Add widget info for all connected inputs
+                # Add widget info for connected inputs
                 input_dict["widget"] = {"name": input_name}
                 inputs_to_add[input_name] = input_dict
-            else:
-                # Has a value - has widget, must be in inputs array
-                inputs_to_add[input_name] = {
-                    "name": input_name,
-                    "type": input_type,
-                    "link": None,
-                    "widget": {"name": input_name}
-                }
-        
-        # Step 2: Add optional inputs that weren't in lite format but should have widgets
-        # (This handles cases like wandb_config which is optional but has a widget in standard format)
-        for param_name in param_order:
-            if param_name in inputs_to_add:
-                continue
-            if param_name in lite_inputs:
-                continue  # Already handled in Step 1
-            
-            # Add all optional inputs that weren't in lite format (they should have widgets)
-            # No special handling for param_type - add all optional inputs
-            if param_name in optional_params:
-                param_type = self.type_resolver.get_input_type(node_type, param_name)
-                inputs_to_add[param_name] = {
-                    "name": param_name,
-                    "type": param_type,
-                    "link": None,
-                    "widget": {"name": param_name}
-                }
-        
-        # Step 3: Build inputs_array in node_info order
-        # Only include inputs that should be in inputs_array (connections or have widgets)
+            # else: Unconnected inputs are NOT added to inputs array
+            # Their values are already stored in widgets_values
+
+        # Step 2: Build inputs_array in node_info order
+        # Only include connected inputs in inputs_array
         # Follow node_info order, but only for inputs that are actually in inputs_array
         if param_order:
             # Add all inputs in node_info parameter order

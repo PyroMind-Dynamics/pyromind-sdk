@@ -16,6 +16,15 @@ from typing import Dict, List, Any, Tuple, Optional, Set
 from ..base import PyroMindAPIError
 
 
+# ============================================================================
+# Special Node Types
+# ============================================================================
+
+# Built-in special node types that are not in node_info
+# These are workflow infrastructure nodes, not executable nodes
+SPECIAL_NODE_TYPES = frozenset(["PrimitiveNode"])
+
+
 class ValidationError(Exception):
     """Base exception for validation errors."""
     pass
@@ -494,6 +503,82 @@ def _is_widgetable_type(param_type: str) -> bool:
     return param_type in widgetable_types
 
 
+def _get_widgets_values_param_order(
+    node_type: str,
+    node: Dict,
+    node_info: Dict
+) -> List[str]:
+    """
+    Get the parameter order corresponding to widgets_values in standard format.
+
+    This matches the converter's logic for organizing widgets_values:
+    1. Required: widget-able types first (in node_info definition order)
+    2. Required: non-widget types (in node_info definition order)
+    3. Optional with links: widget-able types first (in node_info definition order)
+    4. Optional with links: non-widget types (in node_info definition order)
+
+    Args:
+        node_type: Node type
+        node: Node dictionary from standard workflow
+        node_info: Node information dictionary
+
+    Returns:
+        List of parameter names in the order they appear in widgets_values
+    """
+    node_def = node_info.get(node_type, {})
+    input_defs = node_def.get("input", {})
+    required_params = input_defs.get("required", {})
+    optional_params = input_defs.get("optional", {})
+
+    # Helper to get parameter type
+    def get_param_type(param_def: Any) -> str:
+        if isinstance(param_def, list) and len(param_def) > 0:
+            first_elem = param_def[0]
+            if isinstance(first_elem, str):
+                return first_elem
+            elif isinstance(first_elem, list):
+                return "COMBO"
+        return "STRING"
+
+    # Build parameter order matching converter's logic
+    param_order = []
+
+    # Required: widgetable first (in node_info definition order)
+    for pname, pdef in required_params.items():
+        ptype = get_param_type(pdef)
+        if _is_widgetable_type(ptype):
+            param_order.append(pname)
+
+    # Required: non-widget (in node_info definition order)
+    for pname, pdef in required_params.items():
+        ptype = get_param_type(pdef)
+        if not _is_widgetable_type(ptype):
+            param_order.append(pname)
+
+    # Get inputs array to find optional params with links
+    inputs_array = node.get("inputs", [])
+    connected_input_names = set()
+    for inp in inputs_array:
+        if isinstance(inp, dict) and inp.get("link") is not None:
+            connected_input_names.add(inp.get("name"))
+
+    # Optional with links: widgetable first (in node_info definition order)
+    for pname, pdef in optional_params.items():
+        if pname in connected_input_names:
+            ptype = get_param_type(pdef)
+            if _is_widgetable_type(ptype):
+                param_order.append(pname)
+
+    # Optional with links: non-widget (in node_info definition order)
+    for pname, pdef in optional_params.items():
+        if pname in connected_input_names:
+            ptype = get_param_type(pdef)
+            if not _is_widgetable_type(ptype):
+                param_order.append(pname)
+
+    return param_order
+
+
 def _validate_widgets_values_order(
     node: Dict,
     node_info: Optional[Dict] = None
@@ -702,6 +787,12 @@ def _validate_lite_node_definition(
     if not node_type:
         return errors
 
+    # Special handling for built-in special node types
+    if node_type in SPECIAL_NODE_TYPES:
+        # Skip node_info validation for special nodes (e.g., PrimitiveNode)
+        # These are workflow infrastructure nodes, not executable nodes
+        return errors
+
     # Check if node type exists in node_info
     if node_type not in node_info:
         errors.append(f"Node '{node_name}' has unknown type '{node_type}' (not found in node_info)")
@@ -774,6 +865,12 @@ def _validate_standard_node_definition(
     if not node_type:
         return errors
 
+    # Special handling for built-in special node types
+    if node_type in SPECIAL_NODE_TYPES:
+        # Skip node_info validation for special nodes (e.g., PrimitiveNode)
+        # These are workflow infrastructure nodes, not executable nodes
+        return errors
+
     # Check if node type exists in node_info
     if node_type not in node_info:
         errors.append(f"Node {node_id} has unknown type '{node_type}' (not found in node_info)")
@@ -792,12 +889,22 @@ def _validate_standard_node_definition(
         if isinstance(inp, dict) and "name" in inp:
             node_input_names.add(inp["name"])
 
+    # Get parameters that have values in widgets_values
+    # In standard format, parameters without connections may not appear in inputs array
+    # Their values are stored in widgets_values instead
+    widgets_values_params = set()
+    if node.get("widgets_values"):
+        widgets_values_params = set(_get_widgets_values_param_order(node_type, node, node_info))
+
     # Check required parameters are present
+    # A required parameter is present if it's either:
+    # 1. In the inputs array (has connection), OR
+    # 2. In widgets_values (no connection, direct value)
     for param_name in required_params.keys():
-        if param_name not in node_input_names:
+        if param_name not in node_input_names and param_name not in widgets_values_params:
             errors.append(
                 f"Node {node_id} (type '{node_type}') is missing required parameter '{param_name}' "
-                f"(not found in inputs array)"
+                f"(not found in inputs array or widgets_values)"
             )
 
     # Check that all input parameters exist in node_info and validate types
