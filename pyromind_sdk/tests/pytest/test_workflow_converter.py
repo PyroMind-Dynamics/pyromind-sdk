@@ -1854,3 +1854,554 @@ class TestEdgeCases:
         back_to_standard = converter.to_standard(lite)
         assert len(back_to_standard["nodes"]) == 4
         assert len(back_to_standard["links"]) == 4
+
+
+class TestInputIndexCalculation:
+    """Test input index calculation fixes for connected vs unconnected inputs."""
+
+    def test_calculate_input_index_only_counts_connected_inputs(self):
+        """Test that _calculate_input_index only counts connected inputs, not unconnected values."""
+        node_info = {
+            "TestNode": {
+                "input": {
+                    "required": {
+                        "param1": ["STRING"],
+                        "param2": ["STRING"],
+                        "param3": ["STRING"],
+                    }
+                }
+            }
+        }
+
+        # Create lite node with mix of connected and unconnected inputs
+        lite_node = {
+            "type": "TestNode",
+            "inputs": {
+                "param1": {"node_id": 1, "output_name": "output"},  # Connected
+                "param2": "direct_value",  # Unconnected (direct value)
+                "param3": {"node_id": 2, "output_name": "output"},  # Connected
+            }
+        }
+
+        converter = WorkflowLiteConverter(node_info=node_info)
+        link_builder = converter.link_builder
+        param_order = converter.type_resolver.get_parameter_order("TestNode")
+
+        # Test param1 (first, connected) - should be index 0
+        idx1 = link_builder._calculate_input_index(lite_node, "param1", "TestNode", param_order)
+        assert idx1 == 0
+
+        # Test param2 (second, unconnected) - should NOT be in inputs_array
+        # But if we calculate, it should skip param2 and count only connected ones before param3
+        idx3 = link_builder._calculate_input_index(lite_node, "param3", "TestNode", param_order)
+        # param3 is the third parameter, but only param1 (connected) comes before it
+        # So param3 should be at index 1 (only param1 is counted)
+        assert idx3 == 1
+
+    def test_calculate_input_index_with_all_unconnected(self):
+        """Test input index calculation when all inputs are unconnected."""
+        node_info = {
+            "TestNode": {
+                "input": {
+                    "required": {
+                        "param1": ["STRING"],
+                        "param2": ["STRING"],
+                    }
+                }
+            }
+        }
+
+        lite_node = {
+            "type": "TestNode",
+            "inputs": {
+                "param1": "value1",  # Unconnected
+                "param2": "value2",  # Unconnected
+            }
+        }
+
+        converter = WorkflowLiteConverter(node_info=node_info)
+        link_builder = converter.link_builder
+        param_order = converter.type_resolver.get_parameter_order("TestNode")
+
+        # Since all inputs are unconnected, inputs_array should be empty
+        # But if we try to calculate index for a connection that doesn't exist,
+        # it should handle gracefully
+        # This tests the fallback logic
+        idx = link_builder._calculate_input_index(lite_node, "param1", "TestNode", param_order)
+        # Should return 0 since no connected inputs come before param1
+        assert idx == 0
+
+    def test_calculate_input_index_with_optional_connected(self):
+        """Test input index calculation with optional connected parameters."""
+        node_info = {
+            "TestNode": {
+                "input": {
+                    "required": {
+                        "req_param": ["STRING"],
+                    },
+                    "optional": {
+                        "opt_param1": ["STRING"],
+                        "opt_param2": ["STRING"],
+                    }
+                }
+            }
+        }
+
+        lite_node = {
+            "type": "TestNode",
+            "inputs": {
+                "req_param": "direct_value",  # Unconnected required
+                "opt_param1": {"node_id": 1, "output_name": "output"},  # Connected optional
+                "opt_param2": "direct_value",  # Unconnected optional
+            }
+        }
+
+        converter = WorkflowLiteConverter(node_info=node_info)
+        link_builder = converter.link_builder
+        param_order = converter.type_resolver.get_parameter_order("TestNode")
+
+        # opt_param1 is optional and connected, should be in inputs_array
+        idx = link_builder._calculate_input_index(lite_node, "opt_param1", "TestNode", param_order)
+        # req_param is before opt_param1 but unconnected, so not counted
+        # So opt_param1 should be at index 0
+        assert idx == 0
+
+    def test_calculate_input_index_complex_scenario(self):
+        """Test complex scenario with multiple connected and unconnected inputs."""
+        node_info = {
+            "ComplexNode": {
+                "input": {
+                    "required": {
+                        "p1": ["STRING"],
+                        "p2": ["INT"],
+                        "p3": ["STRING"],
+                        "p4": ["MODEL"],
+                        "p5": ["STRING"],
+                    }
+                }
+            }
+        }
+
+        lite_node = {
+            "type": "ComplexNode",
+            "inputs": {
+                "p1": {"node_id": 1, "output_name": "out"},  # Connected
+                "p2": 42,  # Unconnected
+                "p3": {"node_id": 2, "output_name": "out"},  # Connected
+                "p4": None,  # Unconnected MODEL
+                "p5": {"node_id": 3, "output_name": "out"},  # Connected
+            }
+        }
+
+        converter = WorkflowLiteConverter(node_info=node_info)
+        link_builder = converter.link_builder
+        param_order = converter.type_resolver.get_parameter_order("ComplexNode")
+
+        # p1 (first, connected) -> index 0
+        idx_p1 = link_builder._calculate_input_index(lite_node, "p1", "ComplexNode", param_order)
+        assert idx_p1 == 0
+
+        # p3 (third, connected, but p1 is before it) -> index 1
+        idx_p3 = link_builder._calculate_input_index(lite_node, "p3", "ComplexNode", param_order)
+        assert idx_p3 == 1
+
+        # p5 (fifth, connected, p1 and p3 before it) -> index 2
+        idx_p5 = link_builder._calculate_input_index(lite_node, "p5", "ComplexNode", param_order)
+        assert idx_p5 == 2
+
+
+class TestLastNodeAndLinkIdCalculation:
+    """Test fixes for last_node_id and last_link_id calculation using max instead of count."""
+
+    def test_last_node_id_uses_maximum_not_count(self):
+        """Test that last_node_id uses maximum node ID, not node count."""
+        lite = {
+            "version": "1.0",
+            "nodes": {
+                "node1": {
+                    "type": "TestNode",
+                    "index": 1,
+                    "inputs": {},
+                    "outputs": ["output"]
+                },
+                "node2": {
+                    "type": "TestNode",
+                    "index": 5,  # Non-sequential ID
+                    "inputs": {},
+                    "outputs": ["output"]
+                },
+                "node3": {
+                    "type": "TestNode",
+                    "index": 3,
+                    "inputs": {},
+                    "outputs": ["output"]
+                }
+            }
+        }
+
+        converter = WorkflowLiteConverter()
+        standard = converter.to_standard(lite)
+
+        # Should use max node ID (5), not count (3)
+        assert standard["last_node_id"] == 5
+        assert standard["last_node_id"] != len(standard["nodes"])
+
+    def test_last_link_id_uses_maximum_not_count(self):
+        """Test that last_link_id uses maximum link ID, not link count."""
+        lite = {
+            "version": "1.0",
+            "nodes": {
+                "source": {
+                    "type": "SourceNode",
+                    "index": 1,
+                    "inputs": {},
+                    "outputs": ["output"]
+                },
+                "target1": {
+                    "type": "TargetNode",
+                    "index": 2,
+                    "inputs": {
+                        "input": {"node_id": 1, "output_name": "output"}
+                    },
+                    "outputs": []
+                },
+                "target2": {
+                    "type": "TargetNode",
+                    "index": 3,
+                    "inputs": {
+                        "input": {"node_id": 1, "output_name": "output"}
+                    },
+                    "outputs": []
+                }
+            }
+        }
+
+        converter = WorkflowLiteConverter()
+        standard = converter.to_standard(lite)
+
+        # Links are auto-assigned IDs starting from 1
+        # With 2 links, IDs should be 1 and 2, so max should be 2
+        assert len(standard["links"]) == 2
+        assert standard["last_link_id"] == 2
+        assert standard["last_link_id"] == len(standard["links"])
+
+    def test_last_node_id_with_gap_in_ids(self):
+        """Test last_node_id calculation when there are gaps in node IDs."""
+        lite = {
+            "version": "1.0",
+            "nodes": {
+                "node1": {
+                    "type": "TestNode",
+                    "index": 10,  # Start with high ID
+                    "inputs": {},
+                    "outputs": ["output"]
+                },
+                "node2": {
+                    "type": "TestNode",
+                    "index": 20,  # Gap in IDs
+                    "inputs": {},
+                    "outputs": ["output"]
+                },
+                "node3": {
+                    "type": "TestNode",
+                    "index": 5,  # Lower ID
+                    "inputs": {},
+                    "outputs": ["output"]
+                }
+            }
+        }
+
+        converter = WorkflowLiteConverter()
+        standard = converter.to_standard(lite)
+
+        # Should use max (20), not count (3)
+        assert standard["last_node_id"] == 20
+        assert len(standard["nodes"]) == 3
+
+    def test_last_node_id_single_node(self):
+        """Test last_node_id with single node."""
+        lite = {
+            "version": "1.0",
+            "nodes": {
+                "node1": {
+                    "type": "TestNode",
+                    "index": 42,
+                    "inputs": {},
+                    "outputs": ["output"]
+                }
+            }
+        }
+
+        converter = WorkflowLiteConverter()
+        standard = converter.to_standard(lite)
+
+        assert standard["last_node_id"] == 42
+        # Note: last_node_id (42) is different from node count (1), demonstrating max vs count
+        assert standard["last_node_id"] != len(standard["nodes"])
+
+    def test_last_node_id_zero_based(self):
+        """Test last_node_id with zero-based node IDs."""
+        lite = {
+            "version": "1.0",
+            "nodes": {
+                "node1": {
+                    "type": "TestNode",
+                    "index": 0,
+                    "inputs": {},
+                    "outputs": ["output"]
+                },
+                "node2": {
+                    "type": "TestNode",
+                    "index": 1,
+                    "inputs": {},
+                    "outputs": ["output"]
+                }
+            }
+        }
+
+        converter = WorkflowLiteConverter()
+        standard = converter.to_standard(lite)
+
+        assert standard["last_node_id"] == 1
+        assert len(standard["nodes"]) == 2
+
+    def test_last_link_id_with_manual_link_ids(self):
+        """Test last_link_id when links have manually assigned IDs (if supported)."""
+        # Note: In current implementation, link IDs are auto-assigned
+        # This test verifies the calculation works correctly
+        lite = {
+            "version": "1.0",
+            "nodes": {
+                "source": {
+                    "type": "SourceNode",
+                    "index": 1,
+                    "inputs": {},
+                    "outputs": ["out1", "out2"]
+                },
+                "target1": {
+                    "type": "TargetNode",
+                    "index": 2,
+                    "inputs": {
+                        "in1": {"node_id": 1, "output_name": "out1"}
+                    },
+                    "outputs": []
+                },
+                "target2": {
+                    "type": "TargetNode",
+                    "index": 3,
+                    "inputs": {
+                        "in1": {"node_id": 1, "output_name": "out2"}
+                    },
+                    "outputs": []
+                }
+            }
+        }
+
+        converter = WorkflowLiteConverter()
+        standard = converter.to_standard(lite)
+
+        # Should have 2 links with IDs 1 and 2
+        assert len(standard["links"]) == 2
+        link_ids = [link[0] for link in standard["links"]]
+        assert max(link_ids) == 2
+        assert standard["last_link_id"] == 2
+
+    def test_last_node_and_link_id_empty_workflow(self):
+        """Test last_node_id and last_link_id with empty workflow."""
+        lite = {
+            "version": "1.0",
+            "nodes": {}
+        }
+
+        converter = WorkflowLiteConverter()
+        standard = converter.to_standard(lite)
+
+        # Should be 0 for empty workflow
+        assert standard["last_node_id"] == 0
+        assert standard["last_link_id"] == 0
+
+    def test_last_node_id_preserved_from_original(self):
+        """Test that last_node_id correctly reflects max even when converting from standard."""
+        # Create a standard workflow with non-sequential node IDs
+        original = {
+            "id": "test-workflow",
+            "nodes": [
+                {
+                    "id": 1,
+                    "type": "TestNode",
+                    "inputs": [],
+                    "outputs": [],
+                    "widgets_values": [],
+                    "pos": [0, 0],
+                    "size": [100, 100],
+                    "flags": {},
+                    "order": 0,
+                    "mode": 0,
+                    "properties": {}
+                },
+                {
+                    "id": 15,  # Non-sequential
+                    "type": "TestNode",
+                    "inputs": [],
+                    "outputs": [],
+                    "widgets_values": [],
+                    "pos": [0, 0],
+                    "size": [100, 100],
+                    "flags": {},
+                    "order": 0,
+                    "mode": 0,
+                    "properties": {}
+                },
+                {
+                    "id": 7,  # Another non-sequential
+                    "type": "TestNode",
+                    "inputs": [],
+                    "outputs": [],
+                    "widgets_values": [],
+                    "pos": [0, 0],
+                    "size": [100, 100],
+                    "flags": {},
+                    "order": 0,
+                    "mode": 0,
+                    "properties": {}
+                }
+            ],
+            "links": []
+        }
+
+        converter = WorkflowLiteConverter()
+        lite = converter.to_lite(original)
+        back_to_standard = converter.to_standard(lite, original)
+
+        # Should use max node ID (15), not count (3)
+        assert back_to_standard["last_node_id"] == 15
+        assert len(back_to_standard["nodes"]) == 3
+
+
+class TestInputIndexWithRealScenarios:
+    """Test input index calculation with real-world scenarios."""
+
+    def test_input_index_with_mixed_connection_types(self):
+        """Test input index with mix of MODEL, STRING, and other types."""
+        node_info = {
+            "TrainingNode": {
+                "input": {
+                    "required": {
+                        "dataset": ["STRING"],
+                        "model_path": ["MODEL"],  # Non-widget type
+                        "learning_rate": ["FLOAT"],
+                        "batch_size": ["INT"],
+                    }
+                }
+            }
+        }
+
+        lite_node = {
+            "type": "TrainingNode",
+            "inputs": {
+                "dataset": {"node_id": 1, "output_name": "dataset"},  # Connected STRING
+                "model_path": {"node_id": 2, "output_name": "model"},  # Connected MODEL
+                "learning_rate": 0.001,  # Unconnected FLOAT
+                "batch_size": 32,  # Unconnected INT
+            }
+        }
+
+        converter = WorkflowLiteConverter(node_info=node_info)
+        link_builder = converter.link_builder
+        param_order = converter.type_resolver.get_parameter_order("TrainingNode")
+
+        # dataset (first, connected) -> index 0
+        idx_dataset = link_builder._calculate_input_index(lite_node, "dataset", "TrainingNode", param_order)
+        assert idx_dataset == 0
+
+        # model_path (second, connected, dataset before it) -> index 1
+        idx_model = link_builder._calculate_input_index(lite_node, "model_path", "TrainingNode", param_order)
+        assert idx_model == 1
+
+    def test_input_index_round_trip_consistency(self):
+        """Test that input index calculation is consistent in round-trip conversion."""
+        node_info = {
+            "ProcessNode": {
+                "input": {
+                    "required": {
+                        "input1": ["STRING"],
+                        "input2": ["STRING"],
+                        "input3": ["STRING"],
+                    }
+                },
+                "output": ["STRING"],
+                "output_name": ["output"]
+            }
+        }
+
+        # Create standard workflow with mixed connections
+        standard = {
+            "id": "test",
+            "nodes": [
+                {
+                    "id": 1,
+                    "type": "SourceNode",
+                    "inputs": [],
+                    "outputs": [{"name": "output", "type": "STRING", "links": []}],
+                    "widgets_values": [],
+                    "pos": [0, 0],
+                    "size": [270, 82],
+                    "flags": {},
+                    "order": 0,
+                    "mode": 0,
+                    "properties": {}
+                },
+                {
+                    "id": 2,
+                    "type": "ProcessNode",
+                    "inputs": [
+                        {"name": "input1", "type": "STRING", "link": 1, "widget": {"name": "input1"}},  # Connected
+                        {"name": "input2", "type": "STRING", "link": None, "widget": {"name": "input2"}},  # Unconnected
+                        {"name": "input3", "type": "STRING", "link": 1, "widget": {"name": "input3"}},  # Connected
+                    ],
+                    "outputs": [{"name": "output", "type": "STRING", "links": []}],
+                    "widgets_values": ["", "direct_value", ""],  # input2 has value
+                    "pos": [0, 0],
+                    "size": [270, 82],
+                    "flags": {},
+                    "order": 0,
+                    "mode": 0,
+                    "properties": {}
+                }
+            ],
+            "links": [
+                [1, 1, 0, 2, 0, "STRING"],  # source -> input1
+                [2, 1, 0, 2, 2, "STRING"],  # source -> input3
+            ]
+        }
+
+        converter = WorkflowLiteConverter(node_info=node_info)
+        lite = converter.to_lite(standard)
+
+        # Verify lite format
+        process_node = lite["nodes"]["process"]
+        assert process_node["inputs"]["input1"] == {"node_id": 1, "output_name": "output"}
+        assert process_node["inputs"]["input2"] == "direct_value"
+        assert process_node["inputs"]["input3"] == {"node_id": 1, "output_name": "output"}
+
+        # Convert back to standard
+        back_to_standard = converter.to_standard(lite)
+
+        # Verify that input indices are correct
+        process_node_std = back_to_standard["nodes"][1]  # ProcessNode should be second
+        inputs = process_node_std["inputs"]
+
+        # input1 should be at index 0 (first connected input)
+        assert inputs[0]["name"] == "input1"
+        assert inputs[0]["link"] == 1
+
+        # input3 should be at index 1 (second connected input, input2 is skipped)
+        assert inputs[1]["name"] == "input3"
+        assert inputs[1]["link"] == 2
+
+        # input2 should NOT be in inputs array (it's unconnected, value in widgets_values)
+        input_names = [inp["name"] for inp in inputs]
+        assert "input2" not in input_names
+
+        # But input2 value should be in widgets_values
+        assert "direct_value" in back_to_standard["nodes"][1]["widgets_values"]
