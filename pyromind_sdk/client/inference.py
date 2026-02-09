@@ -8,6 +8,7 @@ from typing import List
 from .base import PyroMindClient
 from .models import (
     InferenceJobCreateRequest,
+    InferenceJobUpdateRequest,
     InferenceJobResponse,
 )
 
@@ -86,3 +87,46 @@ class InferenceClient(PyroMindClient):
             job_id: ID of the inference job to delete
         """
         self._request("DELETE", f"/inference/{job_id}")
+
+    def update(self, job_id: str, request: InferenceJobUpdateRequest) -> InferenceJobResponse:
+        """
+        Update an inference job configuration.
+
+        Args:
+            job_id: ID of the inference job to update
+            request: InferenceJobUpdateRequest with fields to update (name, resources, model_path, etc.)
+
+        Returns:
+            InferenceJobResponse object
+        """
+        response = self.put(f"/inference/{job_id}", json_data=request.model_dump(exclude_none=True))
+        data = self._extract_data(response)
+        return InferenceJobResponse(**data)
+
+    def pause(self, job_id: str) -> InferenceJobResponse:
+        """
+        Pause a running inference job.
+
+        Args:
+            job_id: ID of the inference job to pause
+
+        Returns:
+            InferenceJobResponse object (status will be stopped)
+        """
+        response = self.post(f"/inference/{job_id}/pause")
+        data = self._extract_data(response)
+        return InferenceJobResponse(**data)
+
+    def resume(self, job_id: str) -> InferenceJobResponse:
+        """
+        Resume a paused inference job.
+
+        Args:
+            job_id: ID of the inference job to resume
+
+        Returns:
+            InferenceJobResponse object (status will be pending then running)
+        """
+        response = self.post(f"/inference/{job_id}/resume")
+        data = self._extract_data(response)
+        return InferenceJobResponse(**data)

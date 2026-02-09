@@ -33,10 +33,10 @@ def create_jupyter_example():
                 name="example-jupyter",
                 resources=ResourceConfig(
                     cpu="2",
-                    memory="4Gi",
+                    memory="16Gi",
                     gpu=0
                 ),
-                timeout=3600  # Timeout in seconds (1 hour)
+                timeout=3600  # Timeout in seconds (1 hour). CPU:memory = 1:8 to 1:16 for success.
             )
         )
         print(f"✓ Jupyter instance created successfully!")

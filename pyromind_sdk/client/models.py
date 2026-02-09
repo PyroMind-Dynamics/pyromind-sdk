@@ -107,6 +107,13 @@ class SandboxCreateRequest(BaseModel):
     configuration: SandboxConfiguration
 
 
+class SandboxUpdateRequest(BaseModel):
+    """Request model for updating a sandbox (all fields optional)"""
+    name: Optional[str] = None
+    resources: Optional[ResourceConfig] = None
+    configuration: Optional[Dict[str, Any]] = None
+
+
 class SandboxUsage(BaseModel):
     """Sandbox usage statistics"""
     cpu_usage: Optional[float] = None
@@ -248,6 +255,16 @@ class InferenceJobCreateRequest(BaseModel):
     inference_framework: str
     timeout: Optional[int] = None
     resources: Optional[ResourceConfig] = None
+    environment_variables: Optional[Dict[str, str]] = None
+
+
+class InferenceJobUpdateRequest(BaseModel):
+    """Request model for updating an inference job (all fields optional)"""
+    name: Optional[str] = None
+    resources: Optional[ResourceConfig] = None
+    model_path: Optional[str] = None
+    inference_framework: Optional[str] = None
+    timeout: Optional[int] = None
     environment_variables: Optional[Dict[str, str]] = None
 
 

@@ -8,6 +8,7 @@ from typing import List, Optional, Dict, Any
 from .base import PyroMindClient
 from .models import (
     SandboxCreateRequest,
+    SandboxUpdateRequest,
     SandboxResponse,
     ActionRequest,
     ActionResponse,
@@ -92,6 +93,49 @@ class SandboxesClient(PyroMindClient):
             sandbox_id: ID of the sandbox to delete
         """
         self._request("DELETE", f"/sandboxes/{sandbox_id}")
+
+    def update(self, sandbox_id: str, request: SandboxUpdateRequest) -> SandboxResponse:
+        """
+        Update a sandbox configuration.
+
+        Args:
+            sandbox_id: ID of the sandbox to update
+            request: SandboxUpdateRequest with fields to update (name, resources, configuration)
+
+        Returns:
+            SandboxResponse object
+        """
+        response = self.put(f"/sandboxes/{sandbox_id}", json_data=request.model_dump(exclude_none=True))
+        data = self._extract_data(response)
+        return SandboxResponse(**data)
+
+    def pause(self, sandbox_id: str) -> SandboxResponse:
+        """
+        Pause a running sandbox.
+
+        Args:
+            sandbox_id: ID of the sandbox to pause
+
+        Returns:
+            SandboxResponse object (status will be stopped)
+        """
+        response = self.post(f"/sandboxes/{sandbox_id}/pause")
+        data = self._extract_data(response)
+        return SandboxResponse(**data)
+
+    def resume(self, sandbox_id: str) -> SandboxResponse:
+        """
+        Resume a paused sandbox.
+
+        Args:
+            sandbox_id: ID of the sandbox to resume
+
+        Returns:
+            SandboxResponse object (status will be pending then running)
+        """
+        response = self.post(f"/sandboxes/{sandbox_id}/resume")
+        data = self._extract_data(response)
+        return SandboxResponse(**data)
     
     def execute_action(self, sandbox_id: str, request: ActionRequest) -> ActionResponse:
         """

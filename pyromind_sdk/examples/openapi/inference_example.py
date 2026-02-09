@@ -25,14 +25,14 @@ def create_inference_job_example():
     
     try:
         print("Creating a new inference job...")
-        job_id = client.inference.create(
+        job = client.inference.create(
             InferenceJobCreateRequest(
                 model_path="/models/Qwen3-VL-30B-A3B-Thinking-FP8",
                 inference_framework="sglang",
                 timeout=7200,
                 resources=ResourceConfig(
                     cpu="16",
-                    memory="32Gi",
+                    memory="128Gi",
                     gpu=1
                 ),
                 environment_variables={
@@ -40,6 +40,7 @@ def create_inference_job_example():
                 }
             )
         )
+        job_id = job.id
         print(f"✓ Inference job created successfully!")
         print(f"  Job ID: {job_id}")
         
