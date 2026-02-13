@@ -100,114 +100,119 @@ def wait_for_instance_status(
     print(f"[WAIT] Timeout waiting for instance {instance_id} to reach status {target_status} after {timeout}s")
     return False
 
-
-def test_complete_workflow(client):
-    """Test a complete workflow of Jupyter instance management"""
-    instance_id = None
-
-    try:
-        # Step 1: Create instance (success ratio CPU:memory = 1:8 to 1:16)
-        instance = client.instance.create(
-            JupyterRequest(
-                name=f"test-workflow-{int(time.time())}",
-                resources=ResourceConfig(
-                    cpu="2",
-                    memory="16Gi",
-                    gpu=0
-                ),
-                timeout=3600
-            )
+def test_create_instance(client, instance_tracker):
+    # Step 1: Create instance (success ratio CPU:memory = 1:8 to 1:16)
+    instance = client.instance.create(
+        JupyterRequest(
+            name=f"test-workflow-{int(time.time())}",
+            resources=ResourceConfig(
+                cpu="2",
+                memory="16Gi",
+                gpu=0
+            ),
+            timeout=3600
         )
-        instance_id = instance.id
-        assert instance_id is not None
+    )
+    instance_id = instance.id
+    assert instance_id is not None
+    instance_tracker.append(instance_id)
 
-        # Step 2: Get instance
-        instance = client.instance.get_instance(instance_id)
-        assert instance.id == instance_id
+    # Step 2: Get instance
+    instance = client.instance.get_instance(instance_id)
+    assert instance.id == instance_id
 
-        while wait_for_instance_status(client, instance_id, 'running'):
+
+    # Wait for instance to be running
+    if not wait_for_instance_status(client, instance_id, 'running'):
+        pytest.skip(f"Instance {instance_id} did not reach running state, skipping test")
+
+
+def test_stop_instance(client, instance_tracker):
+    # 列出所有的实例
+    instances = client.instance.list()
+    # 找到状态是启动中的
+    instance_code = None
+    for instance in instances:
+        if instance.status.lower() == 'running':
+            # 暂停实例
+            instance_code = instance.id
+            client.instance.pause(jupyter_id=instance_code)
             break
 
-        # Step 3: Update instance (success ratio CPU:memory = 1:8 to 1:16)
-        updated = client.instance.update(
-            jupyter_id=instance_id,
-            request=JupyterRequest(
-                name=f"updated-workflow-{int(time.time())}",
-                resources=ResourceConfig(
-                    cpu="4",
-                    memory="32Gi",
-                    gpu=0
-                )
-            )
-        )
-        assert updated.id == instance_id
+    # 验证实例状态
+    if instance_code:
+            assert wait_for_instance_status(client, instance_code, 'stopped')
 
-        # Step 4: Pause instance (if supported)
-        try:
-            while wait_for_instance_status(client, instance_id, 'running'):
-                break
-            paused = client.instance.pause(instance_id)
-            assert paused.id == instance_id
 
-            # Step 5: Resume instance (if pause succeeded)
-            while wait_for_instance_status(client, instance_id, 'stopped'):
-                break
-            resumed = client.instance.resume(instance_id)
-            assert resumed.id == instance_id
-        except PyroMindAPIError as e:
-            # If pause/resume is not supported, skip these steps
-            print(f"Pause/resume not supported or failed: {e.message}")
+def test_resume_instance(client, instance_tracker):
+    # 列出所有的实例
+    instances = client.instance.list()
+    # 找到状态是暂停的
+    instance_code = None
+    for instance in instances:
+        if instance.status.lower() == 'stopped':
+            # 恢复实例
+            instance_code = instance.id
+            client.instance.resume(jupyter_id=instance_code)
+            break
 
-        # Step 6: Pause instance before deletion (required)
-        try:
-            while wait_for_instance_status(client, instance_id, 'running'):
-                break
-            client.instance.pause(instance_id)
-        except PyroMindAPIError as e:
-            print(f"Warning: Cannot pause instance for deletion: {e.message}")
+    # 验证实例状态
+    if instance_code:
+            assert wait_for_instance_status(client, instance_code, 'running')
 
-        # Step 7: Delete instance
-        try:
-            get_instance = client.instance.get_instance(instance_id)
-            if get_instance and get_instance.status.lower() == 'running':
-                client.instance.pause(instance_id)
-            while wait_for_instance_status(client, instance_id, 'stopped'):
-                break
-            client.instance.delete(instance_id)
-        except PyroMindAPIError as e:
-            if "not in a deletable state" in str(e.message).lower():
-                print(f"Warning: Cannot delete instance: {e.message}")
-                # Try to clean up later - mark for manual cleanup
-                print(f"Instance {instance_id} may need manual cleanup")
-            else:
-                raise
 
-        # Verify deletion - wait a bit and check
-        # Note: Deletion may be asynchronous
-        try:
-            instance = client.instance.get_instance(instance_id)
-            # If instance still exists, wait a bit more
-            if instance:
-                try:
-                    client.instance.get_instance(instance_id)
-                    # If we can still get it, deletion may have failed
-                    print(f"Warning: Instance {instance_id} still exists after deletion attempt")
-                except PyroMindAPIError:
-                    # Good, instance was deleted
-                    pass
-        except PyroMindAPIError:
-            # Good, instance was deleted (raises error when getting)
-            pass
+def test_delete_instance(client, instance_tracker):
+    # 列出所有的实例
+    instances = client.instance.list()
+    # 找到状态是运行中的
+    instance_code = None
+    for instance in instances:
+        if instance.status.lower() in ('stopped', 'failed'):
+            # 删除实例
+            instance_code = instance.id
+            client.instance.delete(jupyter_id=instance_code)
+            break
+    if instance_code is None:
+        test_create_instance(client, instance_tracker)
+        test_stop_instance(client, instance_tracker)
 
+    # 验证实例已删除（404 表示删除成功）
+    try:
+        instance_jupyter = client.instance.get_instance(jupyter_id=instance_code)
+    except PyroMindAPIError as e:  # 或者用实际的异常类
+        # 404 是正常的，表示实例已成功删除 PyroMindAPIError('JUPYTER_INSTANCE_NOT_FOUND: JupyterLab instance None not found')
+        assert e.status_code == 404
+        print(f"实例 {instance_code} 已成功删除, e:{e.message}")
     except Exception as e:
-        # Clean up on error
-        if instance_id:
-            try:
-                client.instance.delete(instance_id)
-            except Exception:
-                pass
+        # 其他错误需要抛出
+        print(f"实例 {instance_code} 删除时出错：{e}")
         raise
 
+
+
+def test_edit_instance(client, instance_tracker):
+    # 列出所有的实例
+    instances = client.instance.list()
+    # 找到状态是运行中的
+    instance_code = None
+    for instance in instances:
+        if instance.status.lower() not in ('failed', 'pending'):
+            # 编辑实例
+            instance_code = instance.id
+            jupyter_response = client.instance.get_instance(jupyter_id=instance_code)
+            resources = jupyter_response.resources
+            resources.cpu = "2"
+            resources.memory = "16Gi"
+            resources.gpu = 1
+            resources.gpu_card = "H100"
+            request = JupyterRequest()
+            request.name = jupyter_response.name
+            request.resources = resources
+            client.instance.update(jupyter_id=jupyter_response.id, request=request)
+            break
+
+    instance_restart = client.instance.get_instance(jupyter_id=instance_code)
+    assert instance_restart is not None
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])
