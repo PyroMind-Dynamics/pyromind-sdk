@@ -192,7 +192,7 @@ def test_delete_instance(client, instance_tracker):
     # 找到状态是运行中的
     instance_code = None
     for instance in instances:
-        if instance.status.lower() in ('stopped', 'failed') and instances.name.startswith('test-'):
+        if instance.status.lower() in ('stopped', 'failed') and instances.name.startswith('example-'):
             # 删除实例
             instance_code = instance.id
             delete_jupyter_example(jupyter_id=instance_code)

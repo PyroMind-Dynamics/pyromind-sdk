@@ -118,7 +118,7 @@ def update_jupyter_example(jupyter_id: str):
         updated = client.instance.update(
             jupyter_id=jupyter_id,
             request=JupyterRequest(
-                name="updated-jupyter",
+                name="example-updated-jupyter",
                 resources=ResourceConfig(
                     cpu="4",      # CPU as int 4 (int format)
                     memory="32",  # Memory as 32Gi (int)
