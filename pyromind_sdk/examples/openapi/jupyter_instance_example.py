@@ -11,7 +11,7 @@ The API key can be provided via:
 If neither is provided, the client will raise a ValueError.
 """
 
-import time
+import uuid
 import requests
 from typing import Optional
 from pyromind_sdk import PyroMindAPIClient, PyroMindAPIError
@@ -30,7 +30,7 @@ def create_jupyter_example():
         print("Creating a new Jupyter instance...")
         instance = client.instance.create(
             JupyterRequest(
-                name="example-jupyter",
+                name=f"example-jupyter-{uuid.uuid4().hex[:12]}",
                 resources=ResourceConfig(
                     cpu="2",
                     memory="16Gi",
@@ -120,9 +120,10 @@ def update_jupyter_example(jupyter_id: str):
             request=JupyterRequest(
                 name="updated-jupyter",
                 resources=ResourceConfig(
-                    cpu=4,      # CPU as int 4 (int format)
-                    memory=32,  # Memory as 32Gi (int)
-                    gpu=1         # GPU count: 1
+                    cpu="4",      # CPU as int 4 (int format)
+                    memory="32",  # Memory as 32Gi (int)
+                    gpu="1",         # GPU count: 1
+                    gpu_card='L40S'  # GPU card type: L40S,H100,H200,B200
                 )
             )
         )

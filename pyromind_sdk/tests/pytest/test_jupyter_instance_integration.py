@@ -18,16 +18,52 @@ import time
 import pytest
 
 from pyromind_sdk import PyroMindAPIClient, PyroMindAPIError
-from pyromind_sdk.client.models import (
-    JupyterRequest,
-    ResourceConfig,
-)
+from pyromind_sdk.examples.openapi.jupyter_instance_example import create_jupyter_example, list_jupyter_example, \
+    get_jupyter_example, delete_jupyter_example, update_jupyter_example
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def instance_tracker():
-    # 你的逻辑，比如返回一个列表用来记录测试产生的 ID，方便最后清理
-    return []
+    """Track all created instance IDs for cleanup after tests"""
+    tracker = []
+    yield tracker
+    # Cleanup: Delete all tracked instances after all tests complete
+    print(f"\n[CLEANUP] Cleaning up {len(tracker)} tracked instances...")
+    # Need to create a new client for cleanup since fixture scope is module
+    api_key = os.getenv("PYROMIND_API_KEY")
+    base_url = os.getenv("PYROMIND_BASE_URL", "https://pyromind.ai/api/v1")
+    if api_key:
+        try:
+            cleanup_client = PyroMindAPIClient(api_key=api_key, base_url=base_url)
+            for instance_id in tracker:
+                try:
+                    # Try to get instance status
+                    instance = cleanup_client.instance.get_instance(instance_id)
+                    current_status = instance.status.lower()
+                    print(f"[CLEANUP] Instance {instance_id} status: {current_status}")
+
+                    # If running, pause first
+                    if current_status == 'running':
+                        print(f"[CLEANUP] Pausing instance {instance_id}...")
+                        cleanup_client.instance.pause(instance_id)
+                        # Wait a bit for pause to take effect
+                        time.sleep(5)
+
+                    # Delete the instance
+                    print(f"[CLEANUP] Deleting instance {instance_id}...")
+                    cleanup_client.instance.delete(instance_id)
+                    print(f"[CLEANUP] Successfully deleted instance {instance_id}")
+                except PyroMindAPIError as e:
+                    if "not found" in str(e.message).lower() or e.status_code == 404:
+                        print(f"[CLEANUP] Instance {instance_id} already deleted or not found")
+                    else:
+                        print(f"[CLEANUP] Error cleaning up instance {instance_id}: {e.message}")
+                except Exception as e:
+                    print(f"[CLEANUP] Unexpected error cleaning up instance {instance_id}: {e}")
+        except Exception as e:
+            print(f"[CLEANUP] Failed to create cleanup client: {e}")
+    else:
+        print("[CLEANUP] No API key available for cleanup")
 
 
 @pytest.fixture(scope="module")
@@ -80,7 +116,7 @@ def wait_for_instance_status(
     waited = 0
     while waited < timeout:
         try:
-            instance = client.instance.get_instance(instance_id)
+            instance = get_jupyter_example(instance_id)
             current_status = instance.status.lower()
             print(f"[WAIT] Instance {instance_id} status: {current_status} (target: {target_status}, waited {waited}s)")
             
@@ -102,18 +138,7 @@ def wait_for_instance_status(
 
 def test_create_instance(client, instance_tracker):
     # Step 1: Create instance (success ratio CPU:memory = 1:8 to 1:16)
-    instance = client.instance.create(
-        JupyterRequest(
-            name=f"test-workflow-{int(time.time())}",
-            resources=ResourceConfig(
-                cpu="2",
-                memory="16Gi",
-                gpu=0
-            ),
-            timeout=3600
-        )
-    )
-    instance_id = instance.id
+    instance_id = create_jupyter_example()
     assert instance_id is not None
     instance_tracker.append(instance_id)
 
@@ -121,7 +146,7 @@ def test_create_instance(client, instance_tracker):
     instance = client.instance.get_instance(instance_id)
     assert instance.id == instance_id
 
-
+    instance_tracker.append(instance_id)
     # Wait for instance to be running
     if not wait_for_instance_status(client, instance_id, 'running'):
         pytest.skip(f"Instance {instance_id} did not reach running state, skipping test")
@@ -129,7 +154,7 @@ def test_create_instance(client, instance_tracker):
 
 def test_stop_instance(client, instance_tracker):
     # 列出所有的实例
-    instances = client.instance.list()
+    instances = list_jupyter_example()
     # 找到状态是启动中的
     instance_code = None
     for instance in instances:
@@ -146,7 +171,7 @@ def test_stop_instance(client, instance_tracker):
 
 def test_resume_instance(client, instance_tracker):
     # 列出所有的实例
-    instances = client.instance.list()
+    instances = list_jupyter_example()
     # 找到状态是暂停的
     instance_code = None
     for instance in instances:
@@ -163,14 +188,14 @@ def test_resume_instance(client, instance_tracker):
 
 def test_delete_instance(client, instance_tracker):
     # 列出所有的实例
-    instances = client.instance.list()
+    instances = list_jupyter_example()
     # 找到状态是运行中的
     instance_code = None
     for instance in instances:
-        if instance.status.lower() in ('stopped', 'failed'):
+        if instance.status.lower() in ('stopped', 'failed') and instances.name.startswith('test-'):
             # 删除实例
             instance_code = instance.id
-            client.instance.delete(jupyter_id=instance_code)
+            delete_jupyter_example(jupyter_id=instance_code)
             break
     if instance_code is None:
         test_create_instance(client, instance_tracker)
@@ -178,7 +203,7 @@ def test_delete_instance(client, instance_tracker):
 
     # 验证实例已删除（404 表示删除成功）
     try:
-        instance_jupyter = client.instance.get_instance(jupyter_id=instance_code)
+        instance_jupyter = get_jupyter_example(jupyter_id=instance_code)
     except PyroMindAPIError as e:  # 或者用实际的异常类
         # 404 是正常的，表示实例已成功删除 PyroMindAPIError('JUPYTER_INSTANCE_NOT_FOUND: JupyterLab instance None not found')
         assert e.status_code == 404
@@ -192,27 +217,25 @@ def test_delete_instance(client, instance_tracker):
 
 def test_edit_instance(client, instance_tracker):
     # 列出所有的实例
-    instances = client.instance.list()
+    instances = list_jupyter_example()
     # 找到状态是运行中的
     instance_code = None
     for instance in instances:
         if instance.status.lower() not in ('failed', 'pending'):
             # 编辑实例
             instance_code = instance.id
-            jupyter_response = client.instance.get_instance(jupyter_id=instance_code)
-            resources = jupyter_response.resources
-            resources.cpu = "2"
-            resources.memory = "16Gi"
-            resources.gpu = 1
-            resources.gpu_card = "H100"
-            request = JupyterRequest()
-            request.name = jupyter_response.name
-            request.resources = resources
-            client.instance.update(jupyter_id=jupyter_response.id, request=request)
+            update_jupyter_example(jupyter_id=instance_code)
             break
 
-    instance_restart = client.instance.get_instance(jupyter_id=instance_code)
+    instance_restart = get_jupyter_example(jupyter_id=instance_code)
     assert instance_restart is not None
+    resources = instance_restart.resources
+    assert resources.cpu == "4"
+    assert resources.memory == "32Gi"
+    assert resources.gpu == "1"
+    assert resources.gpu_card == "L40S"
+
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])
