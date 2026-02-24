@@ -208,7 +208,9 @@ class VNCConnectionInfo(BaseModel):
 
 class VNCResponse(BaseModel):
     """VNC response model"""
-    connection: VNCConnectionInfo
+    password: Optional[str] = None
+    web_vnc_url: str
+    connection_info: VNCConnectionInfo
 
 
 class VncAPIResponse(BaseModel):

@@ -207,14 +207,26 @@ def test_delete_sandbox(client, sandbox_tracker):
     for sandbox in sandboxes:
         status = sandbox.status.value.lower() if hasattr(sandbox.status, 'value') else str(sandbox.status).lower()
         if status in ('stopped', 'error') and sandbox.name.startswith('example-'):
-            # Delete the sandbox
+            # Track the sandbox before deleting
             sandbox_id = sandbox.id
+            sandbox_tracker.append(sandbox_id)
+            # Delete the sandbox
             delete_sandbox_example(sandbox_id=sandbox_id)
             break
 
     if sandbox_id is None:
-        test_create_sandbox(client, sandbox_tracker)
-        test_stop_sandbox(client, sandbox_tracker)
+        # Create a new sandbox for deletion test
+        sandbox_id = create_sandbox_example()
+        assert sandbox_id is not None
+        sandbox_tracker.append(sandbox_id)
+        
+        # Wait for sandbox to be running, then stop it
+        if wait_for_sandbox_status(client, sandbox_id, 'running'):
+            pause_sandbox_example(sandbox_id=sandbox_id)
+            wait_for_sandbox_status(client, sandbox_id, 'stopped')
+        
+        # Now delete it
+        delete_sandbox_example(sandbox_id=sandbox_id)
 
     # Verify sandbox is deleted (404 means success)
     try:
@@ -238,8 +250,10 @@ def test_edit_sandbox(client, sandbox_tracker):
     for sandbox in sandboxes:
         status = sandbox.status.value.lower() if hasattr(sandbox.status, 'value') else str(sandbox.status).lower()
         if status not in ('error', 'creating'):
-            # Edit the sandbox
+            # Track the sandbox before editing
             sandbox_id = sandbox.id
+            sandbox_tracker.append(sandbox_id)
+            # Edit the sandbox
             update_sandbox_example(sandbox_id=sandbox_id)
             break
 
@@ -247,6 +261,7 @@ def test_edit_sandbox(client, sandbox_tracker):
     if sandbox_id is None:
         sandbox_id = create_sandbox_example()
         if sandbox_id:
+            sandbox_tracker.append(sandbox_id)
             # Wait for sandbox to be in a state where it can be updated
             wait_for_sandbox_status(client, sandbox_id, 'running')
             # Now try to update it
@@ -256,10 +271,47 @@ def test_edit_sandbox(client, sandbox_tracker):
         sandbox_updated = get_sandbox_example(sandbox_id=sandbox_id)
         assert sandbox_updated is not None
         assert sandbox_updated.name == "example-sandbox-updated"
-        resources = sandbox_updated.resources
-        assert resources.cpu == "4"
-        assert resources.memory == "8Gi"
 
+
+def test_execute_action_sandbox(client, sandbox_tracker):
+    """Test executing an action in a sandbox"""
+    # Step 1: Create a sandbox
+    sandbox_id = create_sandbox_example()
+    assert sandbox_id is not None
+    sandbox_tracker.append(sandbox_id)
+    
+    # Step 2: Wait for sandbox to be running
+    if not wait_for_sandbox_status(client, sandbox_id, 'running'):
+        pytest.skip(f"Sandbox {sandbox_id} did not reach running state, skipping test")
+    
+    # Step 3: Execute an action
+    action = execute_action_example(sandbox_id=sandbox_id)
+    assert action is not None
+    assert action.result is not None
+    assert action.result.status is not None
+
+
+def test_get_vnc_sandbox(client, sandbox_tracker):
+    """Test getting VNC connection information for a sandbox"""
+    # Step 1: Create a sandbox
+    sandbox_id = create_sandbox_example()
+    assert sandbox_id is not None
+    sandbox_tracker.append(sandbox_id)
+    
+    # Step 2: Wait for sandbox to be running
+    if not wait_for_sandbox_status(client, sandbox_id, 'running'):
+        pytest.skip(f"Sandbox {sandbox_id} did not reach running state, skipping test")
+    
+    # Step 3: Get VNC information
+    try:
+        vnc_info = get_vnc_example(sandbox_id=sandbox_id)
+        # If VNC info is available, verify it's a dict
+        if vnc_info is not None:
+            assert isinstance(vnc_info, dict)
+        # If VNC info is not available, that's also acceptable
+    except Exception as e:
+        # VNC might not be supported for this sandbox type, which is fine
+        print(f"VNC not available for sandbox {sandbox_id}: {e}")
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])

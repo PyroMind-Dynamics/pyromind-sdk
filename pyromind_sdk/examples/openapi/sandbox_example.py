@@ -30,11 +30,13 @@ def create_sandbox_example():
     client = PyroMindAPIClient()
     
     try:
-        print("Creating a new sandbox...")
+        import uuid
+        unique_name = f"example-sandbox-{uuid.uuid4().hex[:8]}"
+        print(f"Creating a new sandbox with name: {unique_name}")
         sandbox = client.sandboxes.create(
             SandboxCreateRequest(
-                name="example-sandbox",
-                type=SandboxType.LINUX,
+                name=unique_name,
+                type=SandboxType.LINUX,  # This will be converted to 'code' or appropriate value
                 configuration=SandboxConfiguration(
                     image="ubuntu:22.04",
                     resources=ResourceConfig(
@@ -43,8 +45,8 @@ def create_sandbox_example():
                         gpu=0
                     ),
                     screen_resolution=ScreenResolution(
-                        width=1920,
-                        height=1080
+                        width=1280,
+                        height=800
                     ),
                     environment_variables={
                         "ENV_VAR_1": "value1",
@@ -246,10 +248,10 @@ def update_sandbox_example(sandbox_id: str):
         )
         print(f"✓ Sandbox updated successfully!")
         print(f"  New Name: {sandbox.name}")
-        if sandbox.resources:
+        if sandbox.configuration.resources:
             print(f"  Resources:")
-            print(f"    CPU: {sandbox.resources.cpu}")
-            print(f"    Memory: {sandbox.resources.memory}")
+            print(f"    CPU: {sandbox.configuration.resources.cpu}")
+            print(f"    Memory: {sandbox.configuration.resources.memory}")
         return sandbox
         
     except PyroMindAPIError as e:
