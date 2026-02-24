@@ -10,7 +10,7 @@ The API key can be provided via:
 
 If neither is provided, the client will raise a ValueError.
 """
-
+import time
 import uuid
 import requests
 from typing import Optional

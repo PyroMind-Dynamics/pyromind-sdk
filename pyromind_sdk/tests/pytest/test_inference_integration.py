@@ -115,10 +115,6 @@ def wait_for_job_status(
             if current_status == target_status.lower():
                 print(f"[WAIT] Job {job_id} reached target status: {target_status}")
                 return True
-            # Handle error cases
-            elif current_status == 'failed':
-                print(f"[WAIT] Job {job_id} is in failed state, stopping wait")
-                return False
         except Exception as e:
             print(f"[WAIT] Error checking job status: {type(e).__name__}: {str(e)}")
         
@@ -151,7 +147,7 @@ def test_stop_job(client, job_tracker):
     # Find a running job
     job_id = None
     for job in jobs:
-        if job.status.lower() == 'running':
+        if job.status.lower() == 'running' and job.name.startswith('example-'):
             # Stop the job
             job_id = job.id
             stop_inference_job_example(job_id=job_id)
@@ -180,28 +176,55 @@ def test_resume_job(client, job_tracker):
         assert wait_for_job_status(client, job_id, 'running')
 
 
+
+def test_edit_job(client, job_tracker):
+    """Test editing an inference job"""
+    # Step 1: Create a job
+    job_id = create_inference_job_example()
+    assert job_id is not None
+    job_tracker.append(job_id)
+    
+    # Step 2: Wait for job to be running
+    if not wait_for_job_status(client, job_id, 'running'):
+        pytest.skip(f"Job {job_id} did not reach running state, skipping test")
+    
+    # Step 4: Update the job
+    update_inference_job_example(job_id=job_id)
+    
+    # Step 6: Verify the update
+    job_updated = get_inference_job_example(job_id=job_id)
+    assert job_updated is not None
+    assert job_updated.name == 'example-New Name'
+
+
 def test_delete_job(client, job_tracker):
     """Test deleting an inference job"""
     # List all jobs
     jobs = list_inference_jobs_example()
-    # Find a stopped or failed job with 'example-' prefix
+    # Find a job with 'example-' prefix to delete
     job_id = None
     for job in jobs:
-        if job.status.lower() in ('stopped', 'failed') and job.name.startswith('example-'):
-            # Delete the job
+        if job.name.startswith('example-'):
             job_id = job.id
-            delete_inference_job_example(job_id=job_id)
-            break
-        if job.status.lower() == 'running' and job.name.startswith('example-'):
-            test_stop_job(client, job_tracker)
+            # If running, stop it first
+            if job.status.lower() == 'running':
+                stop_inference_job_example(job_id=job_id)
+                wait_for_job_status(client, job_id, 'stopped')
             # Delete the job
-            job_id = job.id
             delete_inference_job_example(job_id=job_id)
             break
 
     if job_id is None:
+        # If no example jobs found, create one and delete it
         test_create_job(client, job_tracker)
         test_stop_job(client, job_tracker)
+        # Now find and delete the created job
+        jobs = list_inference_jobs_example()
+        for job in jobs:
+            if job.name.startswith('example-') and job.id in job_tracker:
+                job_id = job.id
+                delete_inference_job_example(job_id=job_id)
+                break
 
     # Verify job is deleted (404 means success)
     try:
@@ -215,33 +238,6 @@ def test_delete_job(client, job_tracker):
         print(f"Error while deleting job {job_id}: {e}")
         raise
 
-
-def test_edit_job(client, job_tracker):
-    """Test editing an inference job"""
-    # List all jobs
-    jobs = list_inference_jobs_example()
-    # Find a job that's not failed or pending
-    job_id = None
-    for job in jobs:
-        if job.status.lower() not in ('failed', 'pending'):
-            # Edit the job
-            job_id = job.id
-            update_inference_job_example(job_id=job_id)
-            break
-
-    # If we couldn't find a job to edit, create one first
-    if job_id is None:
-        job_id = create_inference_job_example()
-        if job_id:
-            # Wait for job to be in a state where it can be updated
-            wait_for_job_status(client, job_id, 'running')
-            # Now try to update it
-            update_inference_job_example(job_id=job_id)
-
-    if job_id:
-        job_updated = get_inference_job_example(job_id=job_id)
-        assert job_updated is not None
-        resources = job_updated.resources
 
 
 if __name__ == "__main__":

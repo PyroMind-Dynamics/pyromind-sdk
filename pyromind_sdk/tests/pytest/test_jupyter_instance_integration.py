@@ -123,10 +123,6 @@ def wait_for_instance_status(
             if current_status == target_status.lower():
                 print(f"[WAIT] Instance {instance_id} reached target status: {target_status}")
                 return True
-            # Handle error cases - if instance is in failed state, don't wait further
-            elif current_status == 'failed':
-                print(f"[WAIT] Instance {instance_id} is in failed state, stopping wait")
-                return False
         except Exception as e:
             print(f"[WAIT] Error checking instance status: {type(e).__name__}: {str(e)}")
         
@@ -192,7 +188,7 @@ def test_delete_instance(client, instance_tracker):
     # 找到状态是运行中的
     instance_code = None
     for instance in instances:
-        if instance.status.lower() in ('stopped', 'failed') and instances.name.startswith('example-'):
+        if instance.status.lower() in ('stopped', 'failed') and instance.name.startswith('example-'):
             # 删除实例
             instance_code = instance.id
             delete_jupyter_example(jupyter_id=instance_code)

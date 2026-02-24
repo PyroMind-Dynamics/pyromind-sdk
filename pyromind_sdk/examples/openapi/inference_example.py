@@ -182,7 +182,7 @@ def update_inference_job_example(job_id: str):
         client.inference.update(
             job_id,
             InferenceJobUpdateRequest(
-                name="New Name",
+                name="example-New Name",
                 model_path="/models/Qwen3-VL-30B-A3B-Thinking-FP8",
                 resources=ResourceConfig(
                     cpu="8",
