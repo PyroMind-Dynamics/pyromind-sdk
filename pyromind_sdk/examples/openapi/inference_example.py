@@ -10,11 +10,12 @@ The API key can be provided via:
 
 If neither is provided, the client will raise a ValueError.
 """
+import uuid
 
 from pyromind_sdk import PyroMindAPIClient, PyroMindAPIError
 from pyromind_sdk.client.models import (
     InferenceJobCreateRequest,
-    ResourceConfig,
+    ResourceConfig, InferenceJobUpdateRequest,
 )
 
 
@@ -31,13 +32,15 @@ def create_inference_job_example():
                 inference_framework="sglang",
                 timeout=7200,
                 resources=ResourceConfig(
-                    cpu="16",
-                    memory="128Gi",
-                    gpu=1
+                    cpu="8",
+                    memory="64",
+                    gpu="1",
+                    gpu_card="L40S"
                 ),
                 environment_variables={
                     "MODEL_PATH": "/models/Qwen3-VL-30B-A3B-Thinking-FP8",
-                }
+                },
+                name=f"example-inference-{uuid.uuid4().hex[:12]}",
             )
         )
         job_id = job.id
@@ -136,6 +139,64 @@ def delete_inference_job_example(job_id: str):
         print(f"✗ Failed to delete inference job: {e.message}")
     finally:
         client.close()
+
+def stop_inference_job_example(job_id: str):
+    """Example: Stop an inference job"""
+    # API key is read from PYROMIND_API_KEY environment variable
+    client = PyroMindAPIClient()
+
+    try:
+        print(f"Stopping inference job {job_id}...")
+        client.inference.pause(job_id)
+        print(f"✓ Inference job stopped successfully!")
+
+    except PyroMindAPIError as e:
+        print(f"✗ Failed to stop inference job: {e.message}")
+    finally:
+        client.close()
+
+
+def resume_inference_job_example(job_id: str):
+    """Example: Resume an inference job"""
+    # API key is read from PYROMIND_API_KEY environment variable
+    client = PyroMindAPIClient()
+
+    try:
+        print(f"Resuming inference job {job_id}...")
+        client.inference.resume(job_id)
+        print(f"✓ Inference job resumed successfully!")
+
+    except PyroMindAPIError as e:
+        print(f"✗ Failed to resume inference job: {e.message}")
+    finally:
+        client.close()
+
+
+def update_inference_job_example(job_id: str):
+    """Example: Update an inference job"""
+    # API key is read from PYROMIND_API_KEY environment variable
+    client = PyroMindAPIClient()
+
+    try:
+        print(f"Updating inference job {job_id}...")
+        client.inference.update(
+            job_id,
+            InferenceJobUpdateRequest(
+                name="New Name",
+                model_path="/models/Qwen3-VL-30B-A3B-Thinking-FP8",
+                resources=ResourceConfig(
+                    cpu="8",
+                    memory="64",
+                    gpu="1",
+                    gpu_card="L40S"
+                )
+            )
+        )
+        print(f"✓ Inference job updated successfully!")
+        return job_id
+    except PyroMindAPIError as e:
+        print(f"✗ Failed to update inference job: {e.message}")
+        return None
 
 
 def main():

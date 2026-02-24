@@ -256,6 +256,7 @@ class InferenceJobCreateRequest(BaseModel):
     timeout: Optional[int] = None
     resources: Optional[ResourceConfig] = None
     environment_variables: Optional[Dict[str, str]] = None
+    name: Optional[str] = None
 
 
 class InferenceJobUpdateRequest(BaseModel):
@@ -273,12 +274,13 @@ class InferenceJobResponse(BaseModel):
     id: str
     name: str
     model_path: str
-    image: str
+    image: Optional[str] = None
     status: str
     resources: Optional[ResourceConfig] = None
     endpoint_url: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    uid: Optional[str] = None
 
 
 class InferenceJobListAPIResponse(BaseModel):

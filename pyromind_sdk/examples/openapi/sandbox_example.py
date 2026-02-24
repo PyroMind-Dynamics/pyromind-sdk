@@ -14,6 +14,7 @@ If neither is provided, the client will raise a ValueError.
 from pyromind_sdk import PyroMindAPIClient, PyroMindAPIError
 from pyromind_sdk.client.models import (
     SandboxCreateRequest,
+    SandboxUpdateRequest,
     SandboxConfiguration,
     SandboxType,
     ResourceConfig,
@@ -182,6 +183,78 @@ def delete_sandbox_example(sandbox_id: str):
         
     except PyroMindAPIError as e:
         print(f"✗ Failed to delete sandbox: {e.message}")
+    finally:
+        client.close()
+
+
+def pause_sandbox_example(sandbox_id: str):
+    """Example: Pause a sandbox"""
+    # API key is read from PYROMIND_API_KEY environment variable
+    client = PyroMindAPIClient()
+    
+    try:
+        print(f"Pausing sandbox {sandbox_id}...")
+        sandbox = client.sandboxes.pause(sandbox_id)
+        print(f"✓ Sandbox paused successfully!")
+        status = sandbox.status.value if hasattr(sandbox.status, 'value') else sandbox.status
+        print(f"  Status: {status}")
+        return sandbox
+        
+    except PyroMindAPIError as e:
+        print(f"✗ Failed to pause sandbox: {e.message}")
+        return None
+    finally:
+        client.close()
+
+
+def resume_sandbox_example(sandbox_id: str):
+    """Example: Resume a sandbox"""
+    # API key is read from PYROMIND_API_KEY environment variable
+    client = PyroMindAPIClient()
+    
+    try:
+        print(f"Resuming sandbox {sandbox_id}...")
+        sandbox = client.sandboxes.resume(sandbox_id)
+        print(f"✓ Sandbox resumed successfully!")
+        status = sandbox.status.value if hasattr(sandbox.status, 'value') else sandbox.status
+        print(f"  Status: {status}")
+        return sandbox
+        
+    except PyroMindAPIError as e:
+        print(f"✗ Failed to resume sandbox: {e.message}")
+        return None
+    finally:
+        client.close()
+
+
+def update_sandbox_example(sandbox_id: str):
+    """Example: Update a sandbox"""
+    # API key is read from PYROMIND_API_KEY environment variable
+    client = PyroMindAPIClient()
+    
+    try:
+        print(f"Updating sandbox {sandbox_id}...")
+        sandbox = client.sandboxes.update(
+            sandbox_id,
+            SandboxUpdateRequest(
+                name="example-sandbox-updated",
+                resources=ResourceConfig(
+                    cpu="4",
+                    memory="8Gi"
+                )
+            )
+        )
+        print(f"✓ Sandbox updated successfully!")
+        print(f"  New Name: {sandbox.name}")
+        if sandbox.resources:
+            print(f"  Resources:")
+            print(f"    CPU: {sandbox.resources.cpu}")
+            print(f"    Memory: {sandbox.resources.memory}")
+        return sandbox
+        
+    except PyroMindAPIError as e:
+        print(f"✗ Failed to update sandbox: {e.message}")
+        return None
     finally:
         client.close()
 

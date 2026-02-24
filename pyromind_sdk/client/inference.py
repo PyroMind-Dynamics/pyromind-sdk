@@ -43,7 +43,14 @@ class InferenceClient(PyroMindClient):
             jobs_data = []
         
         # Convert each job data to InferenceJobResponse
-        return [InferenceJobResponse(**job) if isinstance(job, dict) else job for job in jobs_data]
+        converted_jobs = []
+        for job in jobs_data:
+            if isinstance(job, dict):
+                converted_job = self._convert_instance_data(job)
+                converted_jobs.append(InferenceJobResponse(**converted_job))
+            else:
+                converted_jobs.append(job)
+        return converted_jobs
     
     def create(self, request: InferenceJobCreateRequest) -> InferenceJobResponse:
         """
@@ -58,9 +65,18 @@ class InferenceClient(PyroMindClient):
         response = self.post("/inference", json_data=request.model_dump())
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
+
+        if isinstance(data, dict) and "instance" in data:
+            instance_data = data["instance"]
+        else:
+            instance_data = data
+
+        # Convert to InferenceJobResponse
+        if isinstance(instance_data, dict):
+            instance_data = self._convert_instance_data(instance_data)
         
         # Backend returns the job data directly in the data field
-        return InferenceJobResponse(**data)
+        return InferenceJobResponse(**instance_data)
     
     def get_job(self, job_id: str) -> InferenceJobResponse:
         """
@@ -75,9 +91,18 @@ class InferenceClient(PyroMindClient):
         response = self.get(f"/inference/{job_id}")
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
+
+        if isinstance(data, dict) and "instance" in data:
+            instance_data = data["instance"]
+        else:
+            instance_data = data
+
+        # Convert to InferenceJobResponse
+        if isinstance(instance_data, dict):
+            instance_data = self._convert_instance_data(instance_data)
         
         # Backend returns the job data directly in the data field
-        return InferenceJobResponse(**data)
+        return InferenceJobResponse(**instance_data)
     
     def delete(self, job_id: str) -> None:
         """
@@ -101,6 +126,8 @@ class InferenceClient(PyroMindClient):
         """
         response = self.put(f"/inference/{job_id}", json_data=request.model_dump(exclude_none=True))
         data = self._extract_data(response)
+        if isinstance(data, dict):
+            data = self._convert_instance_data(data)
         return InferenceJobResponse(**data)
 
     def pause(self, job_id: str) -> InferenceJobResponse:
@@ -115,6 +142,8 @@ class InferenceClient(PyroMindClient):
         """
         response = self.post(f"/inference/{job_id}/pause")
         data = self._extract_data(response)
+        if isinstance(data, dict):
+            data = self._convert_instance_data(data)
         return InferenceJobResponse(**data)
 
     def resume(self, job_id: str) -> InferenceJobResponse:
@@ -129,4 +158,32 @@ class InferenceClient(PyroMindClient):
         """
         response = self.post(f"/inference/{job_id}/resume")
         data = self._extract_data(response)
+        if isinstance(data, dict):
+            data = self._convert_instance_data(data)
         return InferenceJobResponse(**data)
+
+
+    def _convert_instance_data(self, instance_data) -> dict:
+        if not isinstance(instance_data, dict):
+            return instance_data
+
+
+        jupyter_id_value = instance_data.get("job_id") or instance_data.get("id")
+        converted_instance = {
+            "id": jupyter_id_value,
+            "name": instance_data.get("name") or jupyter_id_value,
+            "model_path": instance_data.get("model_path"),
+            "image": instance_data.get("image") or instance_data.get("image_name"),
+            "status": instance_data.get("status") or "",
+            "resources": instance_data.get("resources"),
+            "endpoint_url": instance_data.get("endpoint_url"),
+            "created_at": instance_data.get("created_at"),
+            "updated_at": instance_data.get("updated_at") or instance_data.get("last_activity"),
+            "uid": instance_data.get("uid"),
+        }
+        # Remove None values for optional fields, but keep required fields
+        converted_instance = {
+            k: v for k, v in converted_instance.items()
+            if v is not None or k in ["id", "name", "status"]
+        }
+        return converted_instance
