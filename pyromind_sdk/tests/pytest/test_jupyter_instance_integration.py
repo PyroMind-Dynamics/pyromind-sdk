@@ -162,6 +162,53 @@ def _cleanup_all_instances(client: Optional[PyroMindAPIClient]):
     print(f"[FINAL_CLEANUP] Cleanup completed")
 
 
+def wait_for_instance_status(
+        client: PyroMindAPIClient,
+        instance_id: str,
+        target_status: str,
+        timeout: int = 1800,
+        check_interval: int = 3
+) -> bool:
+    """
+    Wait for an instance to reach a specific status.
+
+    Args:
+        client: PyroMindAPIClient instance
+        instance_id: ID of the instance to check
+        target_status: Target status to wait for (e.g., 'running', 'stopped')
+        timeout: Maximum time to wait in seconds
+        check_interval: Time between status checks in seconds
+
+    Returns:
+        True if the instance reached the target status, False if timeout
+    """
+    waited = 0
+    while waited < timeout:
+        try:
+            instance = get_jupyter_example(instance_id)
+            current_status = instance.status.lower()
+            print(f"[WAIT] Instance {instance_id} status: {current_status} (target: {target_status}, waited {waited}s)")
+
+            if current_status == 'failed':
+                return False
+
+            if current_status == target_status.lower():
+                print(f"[WAIT] Instance {instance_id} reached target status: {target_status}")
+                return True
+
+            if current_status != 'pending':
+                return False
+
+        except Exception as e:
+            print(f"[WAIT] Error checking instance status: {type(e).__name__}: {str(e)}")
+
+        time.sleep(check_interval)
+        waited += check_interval
+
+    print(f"[WAIT] Timeout waiting for instance {instance_id} to reach status {target_status} after {timeout}s")
+    return False
+
+
 @pytest.fixture(scope="session", autouse=True)
 def register_instance_cleanup(request, session_client):
     """Register cleanup function to run after all tests complete"""
@@ -203,8 +250,8 @@ def test_instance_id(client, instance_tracker):
             JupyterRequest(
                 name=f"test-instance-{int(time.time())}",
                 resources=ResourceConfig(
-                    cpu="2",
-                    memory="4Gi",
+                    cpu="1",
+                    memory="8Gi",
                     gpu=0
                 ),
                 timeout=3600
@@ -323,8 +370,8 @@ class TestCreateJupyterInstance:
                 JupyterRequest(
                     name=instance_name,
                     resources=ResourceConfig(
-                        cpu="2",
-                        memory="4Gi",
+                        cpu="1",
+                        memory="8Gi",
                         gpu=0
                     ),
                     timeout=3600
@@ -451,7 +498,7 @@ class TestUpdateJupyterInstance:
         """Test updating a Jupyter instance"""
         # Wait for instance to be in a state where it can be updated
         # Some APIs may require the instance to be in 'running' or 'stopped' state
-        time.sleep(5)
+        wait_for_instance_status(client, test_instance_id, "running")
         
         updated_instance = client.instance.update(
             jupyter_id=test_instance_id,
@@ -459,7 +506,7 @@ class TestUpdateJupyterInstance:
                 name=f"updated-test-{int(time.time())}",
                 resources=ResourceConfig(
                     cpu="4",
-                    memory="8Gi",
+                    memory="32Gi",
                     gpu=0
                 )
             )
@@ -473,7 +520,7 @@ class TestUpdateJupyterInstance:
     def test_update_jupyter_example_function(self, test_instance_id):
         """Test the update_jupyter_example function"""
         # Wait a bit before updating
-        time.sleep(5)
+        wait_for_instance_status(client, test_instance_id, "running")
         
         updated_instance = update_jupyter_example(test_instance_id)
         
@@ -512,10 +559,10 @@ class TestPauseJupyterInstance:
         assert paused_instance.id == test_instance_id
         assert paused_instance.status is not None
     
-    def test_pause_jupyter_example_function(self, test_instance_id):
+    def test_pause_jupyter_example_function(self, client, test_instance_id):
         """Test the pause_jupyter_example function"""
         # Wait for instance to be ready
-        time.sleep(10)
+        wait_for_instance_status(client, test_instance_id, "running")
         
         paused_instance = pause_jupyter_example(test_instance_id)
         
@@ -532,10 +579,9 @@ class TestResumeJupyterInstance:
         """Test resuming a paused Jupyter instance"""
         # First, pause the instance
         try:
-            time.sleep(5)
+            wait_for_instance_status(client, test_instance_id, "stopped")
             client.instance.pause(test_instance_id)
             # Wait for pause to complete
-            time.sleep(10)
         except Exception:
             # If pause fails, skip this test
             pytest.skip("Cannot pause instance, skipping resume test")
@@ -551,7 +597,7 @@ class TestResumeJupyterInstance:
         assert resumed_instance.id == test_instance_id
         assert resumed_instance.status is not None
     
-    def test_resume_jupyter_example_function(self, test_instance_id):
+    def test_resume_jupyter_example_function(self, client, test_instance_id):
         """Test the resume_jupyter_example function"""
         # First, check current status
         try:
@@ -562,7 +608,7 @@ class TestResumeJupyterInstance:
             # If already running, we need to pause it first
             if instance.status.lower() in ['running', 'starting']:
                 try:
-                    time.sleep(5)
+                    wait_for_instance_status(client, test_instance_id, "stopped")
                     pause_jupyter_example(test_instance_id)
                     # Wait for pause to complete
                     max_wait = 60
@@ -591,7 +637,7 @@ class TestResumeJupyterInstance:
             pytest.skip(f"Cannot get instance status: {str(e)}")
         
         # Wait for database status to sync
-        time.sleep(5)
+        wait_for_instance_status(client, test_instance_id, "stopped")
         
         # Resume the instance
         resumed_instance = resume_jupyter_example(
@@ -617,7 +663,7 @@ class TestDeleteJupyterInstance:
                 name=f"test-delete-{int(time.time())}",
                 resources=ResourceConfig(
                     cpu="2",
-                    memory="4Gi",
+                    memory="16Gi",
                     gpu=0
                 ),
                 timeout=3600
@@ -629,7 +675,7 @@ class TestDeleteJupyterInstance:
         instance_tracker.add(instance_id)
         
         # Wait for instance to be ready
-        time.sleep(5)
+        wait_for_instance_status(client, instance_id, "stopped")
         
         # Pause the instance first (required for deletion)
         try:
@@ -758,8 +804,8 @@ class TestCompleteWorkflow:
                 JupyterRequest(
                     name=f"test-workflow-{int(time.time())}",
                     resources=ResourceConfig(
-                        cpu="2",
-                        memory="4Gi",
+                        cpu="1",
+                        memory="8Gi",
                         gpu=0
                     ),
                     timeout=3600
@@ -775,14 +821,14 @@ class TestCompleteWorkflow:
             assert instance.id == instance_id
             
             # Step 3: Update instance
-            time.sleep(5)
+            wait_for_instance_status(client, instance_id, "running")
             updated = client.instance.update(
                 jupyter_id=instance_id,
                 request=JupyterRequest(
                     name=f"updated-workflow-{int(time.time())}",
                     resources=ResourceConfig(
-                        cpu="4",
-                        memory="8Gi",
+                        cpu="2",
+                        memory="16Gi",
                         gpu=0
                     )
                 )
@@ -791,12 +837,12 @@ class TestCompleteWorkflow:
             
             # Step 4: Pause instance (if supported)
             try:
-                time.sleep(10)
+                wait_for_instance_status(client, instance_id, "running")
                 paused = client.instance.pause(instance_id)
                 assert paused.id == instance_id
                 
                 # Step 5: Resume instance (if pause succeeded)
-                time.sleep(10)
+                wait_for_instance_status(client, instance_id, "running")
                 resumed = client.instance.resume(instance_id)
                 assert resumed.id == instance_id
             except PyroMindAPIError as e:
@@ -805,7 +851,7 @@ class TestCompleteWorkflow:
             
             # Step 6: Pause instance before deletion (required)
             try:
-                time.sleep(5)
+                wait_for_instance_status(client, instance_id, "running")
                 client.instance.pause(instance_id)
                 # Wait for pause to complete
                 max_wait = 60
