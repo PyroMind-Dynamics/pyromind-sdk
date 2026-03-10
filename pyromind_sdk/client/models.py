@@ -252,6 +252,14 @@ class InferenceJobCreateRequest(BaseModel):
     name: Optional[str] = None
 
 
+class InferenceJobUpdateRequest(BaseModel):
+    """Request model for updating an inference job"""
+    name: Optional[str] = None
+    timeout: Optional[int] = None
+    resources: Optional[ResourceConfig] = None
+    environment_variables: Optional[Dict[str, str]] = None
+
+
 class InferenceJobResponse(BaseModel):
     """Inference job response model"""
     id: str = Field(alias="job_id")

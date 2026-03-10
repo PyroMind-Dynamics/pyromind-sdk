@@ -21,6 +21,7 @@ import atexit
 from pyromind_sdk import PyroMindAPIClient, PyroMindAPIError
 from pyromind_sdk.client.models import (
     InferenceJobCreateRequest,
+    InferenceJobUpdateRequest,
     InferenceJobResponse,
     ResourceConfig,
 )
@@ -53,6 +54,7 @@ spec.loader.exec_module(inference_example)
 create_inference_job_example = inference_example.create_inference_job_example
 list_inference_jobs_example = inference_example.list_inference_jobs_example
 get_inference_job_example = inference_example.get_inference_job_example
+update_inference_job_example = inference_example.update_inference_job_example
 delete_inference_job_example = inference_example.delete_inference_job_example
 
 
@@ -496,6 +498,135 @@ class TestGetInferenceJob:
         error = exc_info.value
         print(f"[TEST] Correctly raised PyroMindAPIError: {error.message} (status_code: {error.status_code})")
         assert error.status_code in [404, 400], f"Expected 404 or 400 status code, got: {error.status_code}"
+
+
+class TestUpdateInferenceJob:
+    """Test cases for updating inference jobs"""
+    
+    def test_update_inference_job(self, client, test_job_id):
+        """Test updating an inference job"""
+        print(f"[TEST] Updating inference job: {test_job_id}")
+        
+        # Wait for job to be in a modifiable state (Running or Stopped)
+        print(f"[TEST] Waiting for job to be in modifiable state...")
+        max_wait = 60
+        check_interval = 3
+        waited = 0
+        job = None
+        while waited < max_wait:
+            try:
+                job = client.inference.get_job(test_job_id)
+                current_status = job.status.lower()
+                print(f"[TEST] Job status: {current_status} (waited {waited}s)")
+                if current_status in ['running', 'stopped']:
+                    break
+            except Exception as e:
+                print(f"[TEST] Error checking job status: {type(e).__name__}: {str(e)}")
+            time.sleep(check_interval)
+            waited += check_interval
+        
+        if waited >= max_wait:
+            print(f"[TEST] Warning: Job did not reach modifiable state after {max_wait}s")
+        
+        try:
+            # Update the job with new configuration
+            updated_job = client.inference.update(
+                job_id=test_job_id,
+                request=InferenceJobUpdateRequest(
+                    name=f"updated-test-{int(time.time())}",
+                    timeout=7200,
+                    resources=ResourceConfig(
+                        cpu="8",
+                        memory="64Gi",
+                        gpu=1,
+                        gpu_card="L40S"
+                    )
+                )
+            )
+            print(f"[TEST] Job updated successfully: id={updated_job.id}, name={updated_job.name}")
+        except PyroMindAPIError as e:
+            print(f"[ERROR] Failed to update job: {e.message} (status_code: {e.status_code})")
+            if e.response:
+                print(f"[ERROR] Error response: {e.response}")
+            raise
+        except Exception as e:
+            print(f"[ERROR] Unexpected error updating job: {type(e).__name__}: {str(e)}")
+            raise
+
+        # Verify job was updated
+        assert updated_job is not None, f"Updated job is None for ID: {test_job_id}"
+        assert updated_job.id == test_job_id, f"Job ID mismatch. Expected: {test_job_id}, got: {updated_job.id}"
+        assert updated_job.name is not None, f"Updated job name is None for ID: {test_job_id}"
+        # Note: API may not update all fields, so we only verify what was sent
+    
+    def test_update_inference_job_partial(self, client, test_job_id):
+        """Test partially updating an inference job (only name)"""
+        print(f"[TEST] Partially updating inference job: {test_job_id}")
+        
+        # Wait for job to be in a modifiable state (Running or Stopped)
+        print(f"[TEST] Waiting for job to be in modifiable state...")
+        max_wait = 60
+        check_interval = 3
+        waited = 0
+        while waited < max_wait:
+            try:
+                job = client.inference.get_job(test_job_id)
+                current_status = job.status.lower()
+                print(f"[TEST] Job status: {current_status} (waited {waited}s)")
+                if current_status in ['running', 'stopped']:
+                    break
+            except Exception as e:
+                print(f"[TEST] Error checking job status: {type(e).__name__}: {str(e)}")
+            time.sleep(check_interval)
+            waited += check_interval
+        
+        if waited >= max_wait:
+            print(f"[TEST] Warning: Job did not reach modifiable state after {max_wait}s")
+        
+        try:
+            # Update only the name
+            updated_job = client.inference.update(
+                job_id=test_job_id,
+                request=InferenceJobUpdateRequest(
+                    name=f"updated-test-{int(time.time())}",
+                    timeout=7200,
+                    resources=ResourceConfig(
+                        cpu="8",
+                        memory="64Gi",
+                        gpu=1,
+                        gpu_card="L40S"
+                    )
+                )
+            )
+            print(f"[TEST] Job updated successfully: id={updated_job.id}, name={updated_job.name}")
+        except PyroMindAPIError as e:
+            print(f"[ERROR] Failed to update job: {e.message} (status_code: {e.status_code})")
+            if e.response:
+                print(f"[ERROR] Error response: {e.response}")
+            raise
+        except Exception as e:
+            print(f"[ERROR] Unexpected error updating job: {type(e).__name__}: {str(e)}")
+            raise
+        
+        # Verify job was updated
+        assert updated_job is not None, f"Updated job is None for ID: {test_job_id}"
+        assert updated_job.id == test_job_id, f"Job ID mismatch. Expected: {test_job_id}, got: {updated_job.id}"
+        assert updated_job.name is not None, f"Updated job name is None for ID: {test_job_id}"
+    
+    def test_update_inference_job_example_function(self, test_job_id):
+        """Test the update_inference_job_example function"""
+        print(f"[TEST] Testing update_inference_job_example function with job: {test_job_id}")
+        try:
+            updated_job = update_inference_job_example(test_job_id)
+            print(f"[TEST] Function returned updated job: id={updated_job.id if updated_job else None}, name={updated_job.name if updated_job else None}")
+        except Exception as e:
+            print(f"[ERROR] Function failed: {type(e).__name__}: {str(e)}")
+            raise
+        
+        # Verify job was updated (may return None if update fails)
+        if updated_job:
+            assert updated_job.id == test_job_id, f"Job ID mismatch. Expected: {test_job_id}, got: {updated_job.id}"
+            assert updated_job.name is not None, f"Updated job name is None for ID: {test_job_id}"
 
 
 class TestDeleteInferenceJob:

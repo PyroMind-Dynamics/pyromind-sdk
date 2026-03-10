@@ -14,6 +14,7 @@ If neither is provided, the client will raise a ValueError.
 from pyromind_sdk import PyroMindAPIClient, PyroMindAPIError
 from pyromind_sdk.client.models import (
     InferenceJobCreateRequest,
+    InferenceJobUpdateRequest,
     ResourceConfig,
 )
 import time
@@ -119,6 +120,43 @@ def get_inference_job_example(job_id: str):
         
     except PyroMindAPIError as e:
         print(f"✗ Failed to get inference job: {e.message}")
+        return None
+    finally:
+        client.close()
+
+
+def update_inference_job_example(job_id: str):
+    """Example: Update an inference job"""
+    # API key is read from PYROMIND_API_KEY environment variable
+    client = PyroMindAPIClient()
+    
+    try:
+        print(f"Updating inference job {job_id}...")
+        updated_job = client.inference.update(
+            job_id=job_id,
+            request=InferenceJobUpdateRequest(
+                name=f"updated-inference-{int(time.time())}",
+                timeout=7200,
+                resources=ResourceConfig(
+                    cpu="8",
+                    memory="64Gi",
+                    gpu=1,
+                    gpu_card="L40S"
+                )
+            )
+        )
+        print(f"✓ Inference job updated successfully!")
+        print(f"  Name: {updated_job.name}")
+        print(f"  Status: {updated_job.status}")
+        if updated_job.resources:
+            print(f"  Resources:")
+            print(f"    CPU: {updated_job.resources.cpu}")
+            print(f"    Memory: {updated_job.resources.memory}")
+            print(f"    GPU: {updated_job.resources.gpu}")
+        return updated_job
+        
+    except PyroMindAPIError as e:
+        print(f"✗ Failed to update inference job: {e.message}")
         return None
     finally:
         client.close()

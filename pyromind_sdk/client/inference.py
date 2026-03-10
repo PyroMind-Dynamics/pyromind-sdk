@@ -85,6 +85,30 @@ class InferenceClient(PyroMindClient):
         # Backend returns the job data directly in the data field
         return InferenceJobResponse(**data)
     
+    def update(self, job_id: str, request) -> InferenceJobResponse:
+        """
+        Update an inference job
+        
+        Args:
+            job_id: ID of the inference job to update
+            request: InferenceJobUpdateRequest with updated configuration
+            
+        Returns:
+            InferenceJobResponse object
+        """
+        # Import here to avoid circular dependency
+        from .models import InferenceJobUpdateRequest
+        if not isinstance(request, InferenceJobUpdateRequest):
+            request = InferenceJobUpdateRequest(**request)
+        
+        request_dict = request.model_dump(exclude_none=True)
+        
+        response = self.put(f"/inference/{job_id}", json_data=request_dict)
+        # API returns {success: True, data: {...}} format
+        data = self._extract_data(response)
+        
+        return InferenceJobResponse(**data)
+    
     def delete(self, job_id: str) -> None:
         """
         Delete an inference job
