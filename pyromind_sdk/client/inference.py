@@ -44,7 +44,7 @@ class InferenceClient(PyroMindClient):
         # Convert each job data to InferenceJobResponse
         return [InferenceJobResponse(**job) if isinstance(job, dict) else job for job in jobs_data]
     
-    def create(self, request: InferenceJobCreateRequest) -> InferenceJobResponse:
+    def create(self, request: InferenceJobCreateRequest) -> str:
         """
         Create a new inference job
         
@@ -52,14 +52,21 @@ class InferenceClient(PyroMindClient):
             request: InferenceJobCreateRequest with job configuration
             
         Returns:
-            InferenceJobResponse object
+            Job ID string
         """
         response = self.post("/inference", json_data=request.model_dump())
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         
-        # Backend returns the job data directly in the data field
-        return InferenceJobResponse(**data)
+        # Backend returns either {job_id: "..."} or full job object
+        if isinstance(data, dict) and "job_id" in data:
+            return data["job_id"]
+        elif isinstance(data, dict) and "id" in data:
+            return data["id"]
+        else:
+            # Try to parse as InferenceJobResponse and extract ID
+            job_response = InferenceJobResponse(**data)
+            return job_response.id
     
     def get_job(self, job_id: str) -> InferenceJobResponse:
         """
@@ -86,3 +93,19 @@ class InferenceClient(PyroMindClient):
             job_id: ID of the inference job to delete
         """
         self._request("DELETE", f"/inference/{job_id}")
+    
+    def pause(self, job_id: str) -> InferenceJobResponse:
+        """
+        Pause an inference job
+        
+        Args:
+            job_id: ID of the inference job to pause
+            
+        Returns:
+            InferenceJobResponse object
+        """
+        response = self.post(f"/inference/{job_id}/pause")
+        # API returns {success: True, data: {...}} format
+        data = self._extract_data(response)
+        
+        return InferenceJobResponse(**data)

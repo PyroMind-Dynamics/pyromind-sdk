@@ -249,15 +249,17 @@ class InferenceJobCreateRequest(BaseModel):
     timeout: Optional[int] = None
     resources: Optional[ResourceConfig] = None
     environment_variables: Optional[Dict[str, str]] = None
+    name: Optional[str] = None
 
 
 class InferenceJobResponse(BaseModel):
     """Inference job response model"""
-    id: str
+    id: str = Field(alias="job_id")
     name: str
     model_path: str
-    image: str
+    image: Optional[str] = None
     status: str
+    uid: Optional[str] = None
     resources: Optional[ResourceConfig] = None
     endpoint_url: Optional[str] = None
     created_at: Optional[datetime] = None

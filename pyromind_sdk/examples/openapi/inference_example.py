@@ -16,6 +16,7 @@ from pyromind_sdk.client.models import (
     InferenceJobCreateRequest,
     ResourceConfig,
 )
+import time
 
 
 def create_inference_job_example():
@@ -31,10 +32,12 @@ def create_inference_job_example():
                 inference_framework="sglang",
                 timeout=7200,
                 resources=ResourceConfig(
-                    cpu="16",
+                    cpu="4",
                     memory="32Gi",
-                    gpu=1
+                    gpu=1,
+                    gpu_card="L40S"
                 ),
+                name=f"example-inference-{int(time.time())}",
                 environment_variables={
                     "MODEL_PATH": "/models/Qwen3-VL-30B-A3B-Thinking-FP8",
                 }
