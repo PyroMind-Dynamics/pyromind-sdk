@@ -1,112 +1,132 @@
 {
-    "id": "ab20c582-2495-4836-b6b3-c71880c07246",
-    "revision": 0,
-    "last_node_id": 2,
-    "last_link_id": 1,
-    "nodes": [
-      {
-        "id": 2,
-        "type": "CloneAndCacheDataset",
-        "pos": [
-          -767.209716796875,
-          352.41778564453125
-        ],
-        "size": [
-          270,
-          82
-        ],
-        "flags": {},
-        "order": 0,
-        "mode": 0,
-        "inputs": [],
-        "outputs": [
-          {
-            "name": "dataset_path",
-            "type": "STRING",
-            "links": [
-              1
-            ]
-          }
-        ],
-        "properties": {
-          "Node name for S&R": "CloneAndCacheDataset",
-          "dystatus": "Succeeded"
-        },
-        "widgets_values": [
-          "openai/gsm8k",
-          "/workspace/datasets/"
-        ]
+  "id": "0c26e8e2-0c05-4fe3-9f8e-cd3314c5da7a",
+  "name": "ab20c582-2495-4836-b6b3-c71880c07246",
+  "nodes": [
+    {
+      "id": "CloneAndCacheDataset-1773129755365",
+      "type": "default",
+      "position": {
+        "x": -767.209716796875,
+        "y": 352.41778564453125
       },
-      {
-        "id": 1,
-        "type": "PathJoinNode",
-        "pos": [
-          -403.9374084472656,
-          375.133544921875
-        ],
-        "size": [
-          270,
-          82
-        ],
-        "flags": {},
-        "order": 1,
-        "mode": 0,
-        "inputs": [
-          {
-            "name": "environment",
-            "shape": 7,
-            "type": "ENV",
-            "link": null
-          },
-          {
-            "name": "base_path",
-            "type": "STRING",
-            "widget": {
-              "name": "base_path"
+      "data": {
+        "label": "CloneAndCacheDataset",
+        "nodeType": "CloneAndCacheDataset",
+        "nodeDefinition": {
+          "input": {
+            "required": {
+              "dataset": {"type": "STRING"},
+              "target_path": {"type": "STRING"}
             },
-            "link": 1
-          }
-        ],
-        "outputs": [
-          {
-            "name": "joined_path",
-            "type": "STRING",
-            "links": null
-          }
-        ],
-        "properties": {
-          "Node name for S&R": "PathJoinNode",
-          "dystatus": "Succeeded"
+            "optional": {}
+          },
+          "output": [
+            "STRING"
+          ],
+          "output_is_list": [
+            false
+          ],
+          "output_name": [
+            "dataset_path"
+          ],
+          "name": "CloneAndCacheDataset",
+          "display_name": "CloneAndCacheDataset",
+          "description": "",
+          "python_module": "",
+          "category": "",
+          "output_node": false,
+          "experimental": false,
+          "deprecated": false
         },
-        "widgets_values": [
-          "",
-          "test"
-        ]
-      }
-    ],
-    "links": [
-      [
-        1,
-        2,
-        0,
-        1,
-        1,
-        "STRING"
-      ]
-    ],
-    "groups": [],
-    "config": {},
-    "extra": {
-      "ds": {
-        "scale": 0.7893635922852432,
-        "offset": [
-          924.6495956852094,
-          8.988801521871396
-        ]
+        "config": {
+          "dataset": "openai/gsm8k",
+          "target_path": "/workspace/datasets/"
+        },
+        "isReadOnly": true
       },
-      "frontendVersion": "1.20.0",
-      "customType": "fromtask",
-      "taskId": "745"
+      "measured": {
+        "width": 150,
+        "height": 86
+      },
+      "selected": false,
+      "dragging": false,
+      "properties": {
+        "dystatus": "Succeeded"
+      }
     },
-    "version": 0.4
-  }
+    {
+      "id": "PathJoinNode-1773129755364",
+      "type": "default",
+      "position": {
+        "x": -403.9374084472656,
+        "y": 375.133544921875
+      },
+      "data": {
+        "label": "PathJoinNode",
+        "nodeType": "PathJoinNode",
+        "nodeDefinition": {
+          "input": {
+            "required": {
+              "base_path": {"type": "STRING"}
+            },
+            "optional": {
+              "environment": {"type": "ENV"},
+              "sub_path": {"type": "STRING"}
+            }
+          },
+          "output": [
+            "STRING"
+          ],
+          "output_is_list": [
+            false
+          ],
+          "output_name": [
+            "joined_path"
+          ],
+          "name": "PathJoinNode",
+          "display_name": "PathJoinNode",
+          "description": "",
+          "python_module": "",
+          "category": "",
+          "output_node": false,
+          "experimental": false,
+          "deprecated": false
+        },
+        "config": {
+          "sub_path": "test"
+        },
+        "isReadOnly": true
+      },
+      "measured": {
+        "width": 150,
+        "height": 86
+      },
+      "selected": false,
+      "dragging": false,
+      "properties": {
+        "dystatus": "Succeeded"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "xy-edge__CloneAndCacheDataset-1773129755365dataset_path-PathJoinNode-1773129755364base_path",
+      "source": "CloneAndCacheDataset-1773129755365",
+      "target": "PathJoinNode-1773129755364",
+      "sourceHandle": "dataset_path",
+      "targetHandle": "base_path",
+      "type": "default",
+      "animated": true,
+      "style": {
+        "stroke": "#6366f1",
+        "strokeWidth": 2
+      }
+    }
+  ],
+  "viewport": {
+    "x": 0,
+    "y": 0,
+    "zoom": 1
+  },
+  "timestamp": "2026-03-10T08:02:35.000Z"
+}

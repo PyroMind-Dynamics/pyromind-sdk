@@ -2,15 +2,22 @@
 Training API Client
 
 This module provides a client for managing training tasks via the PyroMind API.
+
+Supports XyFlow (React Flow) workflow format.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from .base import PyroMindClient
 from .models import (
     TrainingTaskCreateRequest,
     TrainingTaskCreateResponse,
     TrainingTaskResponse,
 )
+from .xyflow_models import XyflowWorkflowDTO
+
+
+# Type alias for workflow parameter
+WorkflowType = Union[Dict[str, Any], XyflowWorkflowDTO]
 
 
 class TrainingClient(PyroMindClient):
@@ -46,22 +53,119 @@ class TrainingClient(PyroMindClient):
         # Convert each task data to TrainingTaskResponse
         return [TrainingTaskResponse(**task) if isinstance(task, dict) else task for task in tasks_data]
     
-    def create(self, request: TrainingTaskCreateRequest) -> TrainingTaskCreateResponse:
+    def create(
+        self, 
+        request: Union[TrainingTaskCreateRequest, "XyflowWorkflowBuilder", XyflowWorkflowDTO, Dict[str, Any]],
+        name: Optional[str] = None
+    ) -> TrainingTaskCreateResponse:
         """
-        Create a new training task
+        Create a new training task.
+        
+        Supports multiple input formats:
+        - TrainingTaskCreateRequest: Standard request object
+        - XyflowWorkflowBuilder: Builder instance (will be built)
+        - XyflowWorkflowDTO: Structured workflow model
+        - Dict: Plain dictionary workflow
         
         Args:
-            request: TrainingTaskCreateRequest with task configuration
+            request: Workflow definition in any supported format
+            name: Optional task name (used when request is not TrainingTaskCreateRequest)
             
         Returns:
             TrainingTaskCreateResponse object
+            
+        Example:
+            ```python
+            # Using builder
+            builder = XyflowWorkflowBuilder("my-workflow")
+            builder.add_node("load", "LoadModel", {"model_path": "/models/llama"})
+            response = client.training.create(builder, name="my-training")
+            
+            # Using xyFlow DTO
+            workflow = XyflowWorkflowDTO(name="my-workflow", nodes=[...], edges=[...])
+            response = client.training.create(workflow)
+            
+            # Using dict
+            response = client.training.create({"name": "task", "workflow": {...}})
+            ```
         """
-        response = self.post("/training/tasks", json_data=request.model_dump())
-        # API returns {success: True, data: {...}} format
+        # Handle different input types
+        if isinstance(request, TrainingTaskCreateRequest):
+            # Standard request object
+            workflow_dict = request.model_dump()
+        elif hasattr(request, 'build'):
+            # XyflowWorkflowBuilder instance
+            builder = request
+            workflow_dto = builder.build(validate=True)
+            workflow_dict = {
+                "name": name or builder._name or "training-task",
+                "workflow": workflow_dto.to_dict()
+            }
+        elif isinstance(request, XyflowWorkflowDTO):
+            # XyflowWorkflowDTO instance
+            workflow_dict = {
+                "name": name or request.name or "training-task",
+                "workflow": request.to_dict()
+            }
+        elif isinstance(request, dict):
+            # Plain dictionary
+            if "name" in request and "workflow" in request:
+                workflow_dict = request
+            else:
+                # Assume it's a workflow dict
+                workflow_dict = {
+                    "name": name or "training-task",
+                    "workflow": request
+                }
+        else:
+            raise TypeError(
+                f"Unsupported request type: {type(request).__name__}. "
+                "Expected TrainingTaskCreateRequest, XyflowWorkflowBuilder, "
+                "XyflowWorkflowDTO, or Dict."
+            )
+        
+        response = self.post("/training/tasks", json_data=workflow_dict)
+        print("test:",response)
         data = self._extract_data(response)
         
-        # Backend returns the task data directly in the data field
         return TrainingTaskCreateResponse(**data)
+    
+    def create_from_builder(
+        self,
+        builder: "XyflowWorkflowBuilder",
+        name: Optional[str] = None,
+        validate: bool = True
+    ) -> TrainingTaskCreateResponse:
+        """
+        Create a training task from XyflowWorkflowBuilder.
+        
+        Convenience method for builder pattern.
+        
+        Args:
+            builder: XyflowWorkflowBuilder instance
+            name: Optional task name
+            validate: Whether to validate workflow before submission
+            
+        Returns:
+            TrainingTaskCreateResponse object
+            
+        Example:
+            ```python
+            builder = XyflowWorkflowBuilder("my-training")
+            builder.add_node("load", "LoadModel", {"model_path": "/models/llama"})
+            builder.add_node("train", "Train", {"epochs": 100})
+            builder.connect("load", "model", "train", "model")
+            
+            response = client.training.create_from_builder(builder)
+            print(f"Task ID: {response.task_id}")
+            ```
+        """
+        if validate:
+            errors = builder.build(validate=True).validate_all()
+            if errors:
+                raise ValueError(f"Workflow validation failed: {errors}")
+        
+        return self.create(builder, name=name)
     
     def get_job(self, task_id: str) -> TrainingTaskResponse:
         """

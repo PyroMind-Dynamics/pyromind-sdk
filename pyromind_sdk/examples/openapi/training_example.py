@@ -287,27 +287,32 @@ def get_node_info_example() -> Optional[Dict]:
             
             for node_name, info in node_info.items():
                 print(f"  Node: {node_name}")
-                print(f"    Display Name: {info.get('display_name', 'N/A')}")
-                print(f"    Category: {info.get('category', 'N/A')}")
-                print(f"    Description: {info.get('description', 'N/A')}")
                 
-                # Display inputs
-                inputs = info.get('input', {})
-                if inputs:
-                    print(f"    Inputs ({len(inputs)}):")
-                    for input_name, input_type in inputs.items():
-                        print(f"      - {input_name}: {input_type}")
-                else:
-                    print("    Inputs: None")
-                
-                # Display outputs
-                outputs = info.get('output', [])
-                if outputs:
-                    print(f"    Outputs ({len(outputs)}):")
-                    for output in outputs:
-                        print(f"      - {output}")
-                else:
-                    print("    Outputs: None")
+                # Handle both dict and list formats for node info
+                if isinstance(info, dict):
+                    print(f"    Display Name: {info.get('display_name', 'N/A')}")
+                    print(f"    Category: {info.get('category', 'N/A')}")
+                    print(f"    Description: {info.get('description', 'N/A')}")
+                    
+                    # Display inputs
+                    inputs = info.get('input', {})
+                    if inputs:
+                        print(f"    Inputs ({len(inputs)}):")
+                        for input_name, input_type in inputs.items():
+                            print(f"      - {input_name}: {input_type}")
+                    else:
+                        print("    Inputs: None")
+                    
+                    # Display outputs
+                    outputs = info.get('output', [])
+                    if outputs:
+                        print(f"    Outputs ({len(outputs)}):")
+                        for output in outputs:
+                            print(f"      - {output}")
+                    else:
+                        print("    Outputs: None")
+                elif isinstance(info, list):
+                    print(f"    Info (list with {len(info)} items): {info}")
                 
                 print()
         
@@ -354,12 +359,13 @@ def wait_for_task_completion(task_id: str, target_status: str = "Succeeded",
         time.sleep(check_interval)
 
 
-def parse_workflow_graph(workflow: dict) -> Tuple[Dict[int, dict], Dict[int, List[Tuple[int, str]]]]:
+def parse_workflow_graph(workflow: dict) -> Tuple[Dict[str, dict], Dict[str, List[Tuple[str, str]]]]:
     """
     Parse workflow JSON to extract node information and connections.
+    Supports XyFlow V2 format.
     
     Args:
-        workflow: Workflow JSON dictionary
+        workflow: Workflow JSON dictionary (XyFlow V2 format)
         
     Returns:
         Tuple of (nodes_dict, adjacency_list)
@@ -367,36 +373,64 @@ def parse_workflow_graph(workflow: dict) -> Tuple[Dict[int, dict], Dict[int, Lis
         - adjacency_list: Dictionary mapping node_id to list of (target_node_id, connection_type) tuples
     """
     nodes_dict = {}
-    adjacency_list: Dict[int, List[Tuple[int, str]]] = {}
+    adjacency_list: Dict[str, List[Tuple[str, str]]] = {}
     
-    # Parse nodes
+    # Parse nodes (XyFlow V2 format)
     for node in workflow.get("nodes", []):
         node_id = node.get("id")
         if node_id is None:
             continue
         
+        data = node.get("data", {})
+        node_def = data.get("nodeDefinition", {})
+        
+        # Build inputs/outputs from nodeDefinition
+        inputs = []
+        outputs = []
+        
+        if node_def:
+            input_def = node_def.get("input", {})
+            for category in ["required", "optional"]:
+                for param_name, param_def in input_def.get(category, {}).items():
+                    param_type = param_def[0] if isinstance(param_def, list) and param_def else "ANY"
+                    inputs.append({"name": param_name, "type": param_type})
+            
+            output_types = node_def.get("output", [])
+            output_names = node_def.get("output_name", [])
+            for i, out_type in enumerate(output_types):
+                outputs.append({
+                    "name": output_names[i] if i < len(output_names) else f"output_{i}",
+                    "type": out_type
+                })
+        
         nodes_dict[node_id] = {
             "id": node_id,
-            "type": node.get("type", "Unknown"),
-            "name": node.get("properties", {}).get("Node name for S&R", node.get("type", "Unknown")),
-            "inputs": node.get("inputs", []),
-            "outputs": node.get("outputs", []),
+            "type": data.get("nodeType", "Unknown"),
+            "name": data.get("label", node_id),
+            "inputs": inputs,
+            "outputs": outputs,
         }
         adjacency_list[node_id] = []
     
-    # Parse links to build adjacency list
-    # Link format: [link_id, source_node_id, source_socket_index, target_node_id, target_socket_index, type]
-    for link in workflow.get("links", []):
-        if len(link) >= 6:
-            source_node_id = link[1]
-            target_node_id = link[3]
-            connection_type = link[5] if len(link) > 5 else "unknown"
-            
-            if source_node_id in adjacency_list and target_node_id in nodes_dict:
-                # Check if connection already exists
-                existing = any(tid == target_node_id for tid, _ in adjacency_list[source_node_id])
-                if not existing:
-                    adjacency_list[source_node_id].append((target_node_id, connection_type))
+    # Parse edges (XyFlow V2 format)
+    for edge in workflow.get("edges", []):
+        source_id = edge.get("source")
+        target_id = edge.get("target")
+        source_handle = edge.get("sourceHandle", "")
+        
+        # Determine connection type from source output
+        connection_type = "unknown"
+        if source_id in nodes_dict:
+            outputs = nodes_dict[source_id].get("outputs", [])
+            for out in outputs:
+                if out.get("name") == source_handle:
+                    connection_type = out.get("type", "unknown")
+                    break
+        
+        if source_id in adjacency_list and target_id in nodes_dict:
+            existing = any(tid == target_id for tid, _ in adjacency_list[source_id])
+            if not existing:
+                adjacency_list[source_id].append((target_id, connection_type))
     
     return nodes_dict, adjacency_list
 
@@ -439,9 +473,10 @@ def draw_workflow_graph(workflow: dict) -> None:
     """
     Draw workflow graph showing input nodes pointing to output nodes.
     Also prints input/output information for each node.
+    Supports XyFlow V2 format.
     
     Args:
-        workflow: Workflow JSON dictionary
+        workflow: Workflow JSON dictionary (XyFlow V2 format)
     """
     print("\n" + "=" * 60)
     print("Workflow Graph Visualization")
@@ -464,8 +499,8 @@ def draw_workflow_graph(workflow: dict) -> None:
     print("-" * 60)
     
     # Find nodes with no inputs (entry nodes)
-    entry_nodes: Set[int] = set()
-    all_targets: Set[int] = set()
+    entry_nodes: Set[str] = set()
+    all_targets: Set[str] = set()
     for source_id, targets in adjacency_list.items():
         if targets:
             all_targets.update(tid for tid, _ in targets)
@@ -485,16 +520,16 @@ def draw_workflow_graph(workflow: dict) -> None:
         entry_nodes = set(nodes_dict.keys())
     
     # Build a simple text-based graph
-    visited: Set[int] = set()
+    visited: Set[str] = set()
     
-    def print_connections(node_id: int, indent: str = "", prefix: str = ""):
+    def print_connections(node_id: str, indent: str = "", prefix: str = ""):
         """Recursively print node connections."""
         if node_id in visited:
             return
         
         visited.add(node_id)
         node_info = nodes_dict[node_id]
-        node_label = f"{node_info['name']} (ID:{node_id})"
+        node_label = f"{node_info['name']} ({node_id[:30]}...)" if len(node_id) > 30 else f"{node_info['name']} ({node_id})"
         
         print(f"{indent}{prefix}{node_label}")
         
@@ -533,8 +568,8 @@ def draw_workflow_graph(workflow: dict) -> None:
                 connections = []
                 for target_id, conn_type in targets:
                     target_name = nodes_dict[target_id]['name']
-                    connections.append(f"{target_name} (ID:{target_id}, Type:{conn_type})")
-                print(f"  {source_name} (ID:{source_id}) → {', '.join(connections)}")
+                    connections.append(f"{target_name} (Type:{conn_type})")
+                print(f"  {source_name} → {', '.join(connections)}")
     
     print("=" * 60)
 
@@ -548,7 +583,8 @@ def main():
     get_node_info_example()
     
     # Then process workflow files
-    workflow_files = ["llm_test.json", "join_path.json", "clone.json"]
+    # workflow_files = ["llm_test.json", "join_path.json", "clone.json","test.json"]
+    workflow_files = ["clone.json"]
     workflows_dir = Path(__file__).parent / "workflows"
     
     for workflow_file in workflow_files:

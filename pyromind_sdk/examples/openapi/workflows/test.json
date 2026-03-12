@@ -1,0 +1,349 @@
+{
+  "id": "eabf7e65-cbcc-47cc-9027-d2523c392ddd",
+  "name": "Unsaved Workflow",
+  "nodes": [
+    {
+      "id": "CloneAndCacheModel-1773034751168",
+      "type": "default",
+      "position": {
+        "x": 107.7385065762818,
+        "y": 109.87033969107293
+      },
+      "data": {
+        "label": "Clone Model",
+        "nodeType": "CloneAndCacheModel",
+        "nodeDefinition": {
+          "input": {
+            "required": {
+              "model": [
+                [
+                  "Qwen/Qwen3-0.6B",
+                  "Qwen/Qwen3-1.7B",
+                  "Qwen/Qwen3-14B",
+                  "Qwen/Qwen3-235B-A22B-FP8",
+                  "Qwen/Qwen3-32B",
+                  "Qwen/Qwen3-32B-FP8",
+                  "Qwen/Qwen3-4B",
+                  "Qwen/Qwen3-8B",
+                  "Qwen/Qwen3-VL-235B-A22B-Instruct",
+                  "Qwen/Qwen3-VL-32B-Instruct",
+                  "Qwen/Qwen3-VL-4B-Instruct",
+                  "openai/clip-vit-base-patch32",
+                  "openpi/big_vision",
+                  "openpi/pi05_base",
+                  "pretrained/gui-ck900-lora",
+                  "stabilityai/stable-video-diffusion-img2vid"
+                ],
+                {
+                  "default": "Qwen/Qwen3-0.6B"
+                }
+              ],
+              "target_path": [
+                [
+                  "/workspace/models/"
+                ],
+                {
+                  "default": "/workspace/models/"
+                }
+              ]
+            }
+          },
+          "output": [
+            "MODEL"
+          ],
+          "output_is_list": [
+            false
+          ],
+          "output_name": [
+            "model_path"
+          ],
+          "name": "CloneAndCacheModel",
+          "display_name": "Clone Model",
+          "description": "Clone models for training and evaluation. The model is stored in the pyromind environment, so you can clone it very fast.",
+          "python_module": "test_nodes",
+          "category": "models",
+          "output_node": false,
+          "experimental": false,
+          "deprecated": false
+        },
+        "config": {
+          "model": "Qwen/Qwen3-0.6B",
+          "target_path": "/workspace/models/"
+        },
+        "isReadOnly": true
+      },
+      "measured": {
+        "width": 150,
+        "height": 114
+      },
+      "selected": false,
+      "dragging": false,
+      "properties": {
+        "dystatus": "Succeeded"
+      }
+    },
+    {
+      "id": "LoadModel-1773035015221",
+      "type": "default",
+      "position": {
+        "x": 67.7385065762818,
+        "y": 350.3703396910729
+      },
+      "data": {
+        "label": "Load Model",
+        "nodeType": "LoadModel",
+        "nodeDefinition": {
+          "input": {
+            "required": {
+              "model_path": [
+                "STRING",
+                {
+                  "default": "path/to/model"
+                }
+              ]
+            }
+          },
+          "output": [
+            "MODEL"
+          ],
+          "output_is_list": [
+            false
+          ],
+          "output_name": [
+            "model"
+          ],
+          "name": "LoadModel",
+          "display_name": "Load Model",
+          "description": "Load model for RL training. Simply passes through the model path.",
+          "python_module": "test_nodes",
+          "category": "models",
+          "output_node": false,
+          "experimental": false,
+          "deprecated": false
+        },
+        "config": {
+          "model_path": "/workspace/checkpoints/llm_sft_lora"
+        },
+        "isReadOnly": true
+      },
+      "measured": {
+        "width": 150,
+        "height": 86
+      },
+      "selected": false,
+      "dragging": false,
+      "properties": {
+        "dystatus": "Succeeded"
+      }
+    },
+    {
+      "id": "LLMOrVLMInference-1773035091920",
+      "type": "default",
+      "position": {
+        "x": 451.2385065762817,
+        "y": 126.8703396910729
+      },
+      "data": {
+        "label": "Inference (LLM / VLM)",
+        "nodeType": "LLMOrVLMInference",
+        "nodeDefinition": {
+          "input": {
+            "required": {
+              "model_path": [
+                "MODEL"
+              ],
+              "prompt": [
+                "STRING",
+                {
+                  "default": "Hello, how are you?"
+                }
+              ],
+              "image_path": [
+                "STRING",
+                {
+                  "default": ""
+                }
+              ],
+              "max_tokens": [
+                "INT",
+                {
+                  "default": 100,
+                  "min": 1,
+                  "max": 4096
+                }
+              ],
+              "temperature": [
+                "FLOAT",
+                {
+                  "default": 0.7,
+                  "min": 0,
+                  "max": 2
+                }
+              ],
+              "enable_thinking": [
+                "BOOLEAN",
+                {
+                  "default": false
+                }
+              ],
+              "gpu_count": [
+                "INT",
+                {
+                  "default": 1,
+                  "min": 1,
+                  "max": 8
+                }
+              ],
+              "gpu_product": [
+                [
+                  "NVIDIA-H100-NVL",
+                  "NVIDIA-L40S"
+                ],
+                {
+                  "default": "NVIDIA-H100-NVL"
+                }
+              ]
+            },
+            "optional": {
+              "lora_path": [
+                "MODEL"
+              ]
+            }
+          },
+          "output": [
+            "STRING"
+          ],
+          "output_is_list": [
+            false
+          ],
+          "output_name": [
+            "response"
+          ],
+          "name": "LLMOrVLMInference",
+          "display_name": "Inference (LLM / VLM)",
+          "description": "llm vlm inference node",
+          "python_module": "test_nodes",
+          "category": "🛠️ pengtao.shi (shared)/LLM & VLM",
+          "output_node": false,
+          "experimental": false,
+          "deprecated": false
+        },
+        "config": {
+          "model_path": "",
+          "prompt": "Natalia sold clips to 48 of her friends in April, and then she sold half as many clips in May. How many clips did Natalia sell altogether in April and May?",
+          "image_path": "",
+          "max_tokens": 100,
+          "temperature": 0.01,
+          "enable_thinking": false,
+          "gpu_count": 1,
+          "gpu_product": "NVIDIA-H100-NVL",
+          "lora_path": ""
+        },
+        "isReadOnly": true
+      },
+      "measured": {
+        "width": 150,
+        "height": 310
+      },
+      "selected": false,
+      "dragging": false,
+      "properties": {
+        "dystatus": "Succeeded"
+      }
+    },
+    {
+      "id": "ShowResultNode-1773035309499",
+      "type": "default",
+      "position": {
+        "x": 764.7385065762817,
+        "y": 61.8703396910729
+      },
+      "data": {
+        "label": "Show Result",
+        "nodeType": "ShowResultNode",
+        "nodeDefinition": {
+          "input": {
+            "required": {
+              "result": [
+                "STRING",
+                {
+                  "default": ""
+                }
+              ]
+            }
+          },
+          "output": [],
+          "output_is_list": [],
+          "output_name": [],
+          "name": "ShowResultNode",
+          "display_name": "Show Result",
+          "description": "show result",
+          "python_module": "test_nodes",
+          "category": "🛠️ pengtao.shi (shared)/LLM & VLM",
+          "output_node": false,
+          "experimental": false,
+          "deprecated": false
+        },
+        "config": {
+          "result": ""
+        },
+        "isReadOnly": true
+      },
+      "measured": {
+        "width": 150,
+        "height": 86
+      },
+      "selected": false,
+      "properties": {
+        "dystatus": "Succeeded"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "animated": true,
+      "style": {
+        "stroke": "#6366f1",
+        "strokeWidth": 2
+      },
+      "type": "default",
+      "source": "CloneAndCacheModel-1773034751168",
+      "sourceHandle": "model_path",
+      "target": "LLMOrVLMInference-1773035091920",
+      "targetHandle": "model_path",
+      "id": "xy-edge__CloneAndCacheModel-1773034751168model_path-LLMOrVLMInference-1773035091920model_path"
+    },
+    {
+      "animated": true,
+      "style": {
+        "stroke": "#6366f1",
+        "strokeWidth": 2
+      },
+      "type": "default",
+      "source": "LoadModel-1773035015221",
+      "sourceHandle": "model",
+      "target": "LLMOrVLMInference-1773035091920",
+      "targetHandle": "lora_path",
+      "id": "xy-edge__LoadModel-1773035015221model-LLMOrVLMInference-1773035091920lora_path"
+    },
+    {
+      "animated": true,
+      "style": {
+        "stroke": "#6366f1",
+        "strokeWidth": 2
+      },
+      "type": "default",
+      "source": "LLMOrVLMInference-1773035091920",
+      "sourceHandle": "response",
+      "target": "ShowResultNode-1773035309499",
+      "targetHandle": "result",
+      "id": "xy-edge__LLMOrVLMInference-1773035091920response-ShowResultNode-1773035309499result"
+    }
+  ],
+  "viewport": {
+    "x": 47.52298684743653,
+    "y": 130.2593206178542,
+    "zoom": 2
+  },
+  "timestamp": "2026-03-09T10:21:20.297Z"
+}

@@ -54,10 +54,14 @@ def validate_workflow(
     """
     Validate workflow in standard format before sending to server.
 
+    Supports both XyFlow V2 and ComfyUI formats:
+    - XyFlow V2: has "edges" array with edge objects
+    - ComfyUI: has "links" array with link tuples
+
     Comprehensive validation including:
     1. Schema validation
     2. Node validation
-    3. Link validation
+    3. Link/Edge validation
     4. Type compatibility validation
 
     Args:
@@ -76,8 +80,14 @@ def validate_workflow(
     """
     errors = []
 
+    # Detect format: XyFlow V2 has edges, ComfyUI has links
+    is_xyflow_v2 = "edges" in workflow and isinstance(workflow.get("edges"), list)
+
     # Step 1: Schema validation
-    schema_errors = _validate_schema(workflow)
+    if is_xyflow_v2:
+        schema_errors = _validate_xyflow_v2_schema(workflow)
+    else:
+        schema_errors = _validate_schema(workflow)
     errors.extend(schema_errors)
 
     if errors and strict:
@@ -86,7 +96,10 @@ def validate_workflow(
     # Step 2: Build mappings
     try:
         node_map = _build_node_map(workflow.get("nodes", []))
-        link_map = _build_link_map(workflow.get("links", []))
+        if is_xyflow_v2:
+            link_map = _build_edge_map(workflow.get("edges", []))
+        else:
+            link_map = _build_link_map(workflow.get("links", []))
     except Exception as e:
         errors.append(f"Failed to build mappings: {str(e)}")
         if strict:
@@ -94,20 +107,31 @@ def validate_workflow(
         return False, errors
 
     # Step 3: Node validation
-    node_errors = _validate_nodes(workflow.get("nodes", []), node_map, node_info)
+    if is_xyflow_v2:
+        node_errors = _validate_xyflow_v2_nodes(workflow.get("nodes", []), node_map, node_info)
+    else:
+        node_errors = _validate_nodes(workflow.get("nodes", []), node_map, node_info)
     errors.extend(node_errors)
 
-    # Step 4: Link validation
-    link_errors = _validate_links(
-        workflow.get("links", []),
-        node_map,
-        link_map,
-        node_info
-    )
+    # Step 4: Link/Edge validation
+    if is_xyflow_v2:
+        link_errors = _validate_xyflow_v2_edges(
+            workflow.get("edges", []),
+            node_map,
+            node_info
+        )
+    else:
+        link_errors = _validate_links(
+            workflow.get("links", []),
+            node_map,
+            link_map,
+            node_info
+        )
     errors.extend(link_errors)
 
     # Step 5: Type compatibility validation (if node_info available)
-    if node_info:
+    if node_info and not is_xyflow_v2:
+        # Only for ComfyUI format
         type_errors = _validate_type_compatibility(workflow, node_map, link_map, node_info)
         errors.extend(type_errors)
         
@@ -1221,14 +1245,27 @@ def _validate_business_logic(
     """Validate business logic rules."""
     errors = []
 
+    # Detect format: XyFlow V2 has edges array, ComfyUI has links array
+    is_xyflow = "edges" in workflow and isinstance(workflow.get("edges"), list)
+
     # Check for orphan nodes (no connections in or out)
     connected_nodes = set()
 
-    for link in workflow.get("links", []):
-        if len(link) >= 6:
-            _, source_id, _, target_id, _, _ = link[:6]
-            connected_nodes.add(source_id)
-            connected_nodes.add(target_id)
+    if is_xyflow:
+        # XyFlow V2 format: use edges
+        for edge in workflow.get("edges", []):
+            source = edge.get("source")
+            target = edge.get("target")
+            if source and target:
+                connected_nodes.add(source)
+                connected_nodes.add(target)
+    else:
+        # ComfyUI format: use links
+        for link in workflow.get("links", []):
+            if len(link) >= 6:
+                _, source_id, _, target_id, _, _ = link[:6]
+                connected_nodes.add(source_id)
+                connected_nodes.add(target_id)
 
     orphan_nodes = [
         node_id for node_id in node_map.keys()
@@ -1239,68 +1276,108 @@ def _validate_business_logic(
         errors.append(f"Warning: Orphan nodes found (no connections): {orphan_nodes}")
 
     # Check for self-loops (nodes that connect to themselves)
-    for link in workflow.get("links", []):
-        if len(link) >= 6:
-            link_id, source_id, _, target_id, _, _ = link[:6]
-            if source_id == target_id:
-                errors.append(f"Warning: Link {link_id} is a self-loop (node {source_id} connects to itself)")
+    if is_xyflow:
+        # XyFlow V2 format
+        for edge in workflow.get("edges", []):
+            edge_id = edge.get("id")
+            source = edge.get("source")
+            target = edge.get("target")
+            if source == target:
+                errors.append(f"Warning: Edge {edge_id} is a self-loop (node {source} connects to itself)")
+    else:
+        # ComfyUI format
+        for link in workflow.get("links", []):
+            if len(link) >= 6:
+                link_id, source_id, _, target_id, _, _ = link[:6]
+                if source_id == target_id:
+                    errors.append(f"Warning: Link {link_id} is a self-loop (node {source_id} connects to itself)")
 
     # Check for cycles (detect circular dependencies)
-    cycles = _detect_cycles(node_map, link_map)
+    cycles = _detect_cycles(node_map, link_map, is_xyflow)
     if cycles:
         errors.append(f"Warning: Circular dependencies detected: {cycles}")
 
-    # Check last_node_id and last_link_id consistency
+    # Check last_node_id and last_link_id consistency (only for ComfyUI format)
     nodes = workflow.get("nodes", [])
     links = workflow.get("links", [])
 
-    if nodes:
-        max_node_id = max(node.get("id", 0) for node in nodes)
-        if workflow.get("last_node_id", 0) < max_node_id:
-            errors.append(
-                f"Warning: last_node_id ({workflow.get('last_node_id')}) "
-                f"is less than max node_id ({max_node_id})"
-            )
+    if not is_xyflow and nodes:
+        # ComfyUI format: check numeric node IDs
+        try:
+            numeric_ids = [node.get("id", 0) for node in nodes if isinstance(node.get("id"), (int, float))]
+            if numeric_ids:
+                max_node_id = max(numeric_ids)
+                if workflow.get("last_node_id", 0) < max_node_id:
+                    errors.append(
+                        f"Warning: last_node_id ({workflow.get('last_node_id')}) "
+                        f"is less than max node_id ({max_node_id})"
+                    )
+        except (TypeError, ValueError):
+            pass  # Skip if IDs are not comparable
 
-    if links:
-        max_link_id = max(link[0] for link in links if len(link) > 0)
-        if workflow.get("last_link_id", 0) < max_link_id:
-            errors.append(
-                f"Warning: last_link_id ({workflow.get('last_link_id')}) "
-                f"is less than max link_id ({max_link_id})"
-            )
+    if not is_xyflow and links:
+        # ComfyUI format: check numeric link IDs
+        try:
+            numeric_link_ids = [link[0] for link in links if len(link) > 0 and isinstance(link[0], (int, float))]
+            if numeric_link_ids:
+                max_link_id = max(numeric_link_ids)
+                if workflow.get("last_link_id", 0) < max_link_id:
+                    errors.append(
+                        f"Warning: last_link_id ({workflow.get('last_link_id')}) "
+                        f"is less than max link_id ({max_link_id})"
+                    )
+        except (TypeError, ValueError):
+            pass  # Skip if IDs are not comparable
 
     return errors
 
 
 def _detect_cycles(
-    node_map: Dict[int, Dict],
-    link_map: Dict
-) -> List[List[int]]:
+    node_map: Dict,
+    link_map: Dict,
+    is_xyflow: bool = False
+) -> List[List]:
     """Detect circular dependencies using DFS."""
     cycles = []
     visited = set()
     rec_stack = set()
 
-    def dfs(node_id: int, path: List[int]) -> bool:
+    def dfs(node_id, path: List) -> bool:
         """DFS to detect cycles."""
         visited.add(node_id)
         rec_stack.add(node_id)
         path.append(node_id)
 
-        # Check all outgoing links from this node
-        for link in link_map.values():
-            _, source_id, _, target_id, _, _ = link
-            if source_id == node_id:
-                if target_id not in visited:
-                    if dfs(target_id, path):
+        # Check all outgoing links/edges from this node
+        if is_xyflow:
+            # XyFlow V2 format: link_map contains edge dicts
+            for edge_data in link_map.values():
+                source_id = edge_data.get("source")
+                target_id = edge_data.get("target")
+                if source_id == node_id:
+                    if target_id not in visited:
+                        if dfs(target_id, path):
+                            return True
+                    elif target_id in rec_stack:
+                        # Found a cycle
+                        cycle_start = path.index(target_id)
+                        cycle = path[cycle_start:] + [target_id]
+                        cycles.append(cycle)
                         return True
-                elif target_id in rec_stack:
-                    # Found a cycle
-                    cycle_start = path.index(target_id)
-                    cycle = path[cycle_start:] + [target_id]
-                    cycles.append(cycle)
-                    return True
+        else:
+            # ComfyUI format: link_map contains tuples
+            for link in link_map.values():
+                _, source_id, _, target_id, _, _ = link
+                if source_id == node_id:
+                    if target_id not in visited:
+                        if dfs(target_id, path):
+                            return True
+                    elif target_id in rec_stack:
+                        # Found a cycle
+                        cycle_start = path.index(target_id)
+                        cycle = path[cycle_start:] + [target_id]
+                        cycles.append(cycle)
+                        return True
 
         path.pop()
         rec_stack.remove(node_id)
@@ -1714,3 +1791,155 @@ def validate_workflow_legacy(
     This function wraps the new validate_workflow function.
     """
     return validate_workflow(workflow, client, node_info)
+
+
+# ============================================================================
+# XyFlow V2 Format Validation Functions
+# ============================================================================
+
+def _validate_xyflow_v2_schema(workflow: Dict[str, Any]) -> List[str]:
+    """Validate XyFlow V2 workflow schema."""
+    errors = []
+    
+    # Check required fields
+    if "nodes" not in workflow:
+        errors.append("Missing required field: nodes")
+    elif not isinstance(workflow["nodes"], list):
+        errors.append("Field 'nodes' must be an array")
+    
+    if "edges" not in workflow:
+        errors.append("Missing required field: edges")
+    elif not isinstance(workflow["edges"], list):
+        errors.append("Field 'edges' must be an array")
+    
+    # Validate each node
+    for i, node in enumerate(workflow.get("nodes", [])):
+        if not isinstance(node, dict):
+            errors.append(f"Node at index {i} must be an object")
+            continue
+        
+        if "id" not in node:
+            errors.append(f"Node at index {i} missing required field: id")
+        
+        if "data" not in node:
+            errors.append(f"Node at index {i} missing required field: data")
+        elif not isinstance(node["data"], dict):
+            errors.append(f"Node at index {i}: 'data' must be an object")
+    
+    # Validate each edge
+    for i, edge in enumerate(workflow.get("edges", [])):
+        if not isinstance(edge, dict):
+            errors.append(f"Edge at index {i} must be an object")
+            continue
+        
+        for field in ["id", "source", "target"]:
+            if field not in edge:
+                errors.append(f"Edge at index {i} missing required field: {field}")
+    
+    return errors
+
+
+def _validate_xyflow_v2_nodes(
+    nodes: List[Dict],
+    node_map: Dict,
+    node_info: Optional[Dict] = None
+) -> List[str]:
+    """Validate XyFlow V2 nodes."""
+    errors = []
+    seen_ids = set()
+    
+    for i, node in enumerate(nodes):
+        node_id = node.get("id")
+        
+        # Check for duplicate IDs
+        if node_id in seen_ids:
+            errors.append(f"Duplicate node ID: {node_id}")
+        seen_ids.add(node_id)
+        
+        # Validate node data
+        data = node.get("data", {})
+        node_type = data.get("nodeType")
+        
+        if not node_type:
+            errors.append(f"Node {node_id}: missing nodeType in data")
+        
+        # Check if node type exists in node_info (skip special nodes)
+        if node_info and node_type and node_type not in SPECIAL_NODE_TYPES:
+            if node_type not in node_info:
+                errors.append(f"Node {node_id}: unknown node type '{node_type}'")
+    
+    return errors
+
+
+def _validate_xyflow_v2_edges(
+    edges: List[Dict],
+    node_map: Dict,
+    node_info: Optional[Dict] = None
+) -> List[str]:
+    """Validate XyFlow V2 edges."""
+    errors = []
+    seen_ids = set()
+    
+    for i, edge in enumerate(edges):
+        edge_id = edge.get("id")
+        source = edge.get("source")
+        target = edge.get("target")
+        
+        # Check for duplicate edge IDs
+        if edge_id in seen_ids:
+            errors.append(f"Duplicate edge ID: {edge_id}")
+        seen_ids.add(edge_id)
+        
+        # Check if source and target nodes exist
+        if source not in node_map:
+            errors.append(f"Edge {edge_id}: source node '{source}' does not exist")
+        
+        if target not in node_map:
+            errors.append(f"Edge {edge_id}: target node '{target}' does not exist")
+        
+        # Check for self-loops
+        if source == target:
+            errors.append(f"Edge {edge_id}: self-loop detected")
+        
+        # Validate handles if node_info available
+        if node_info and source in node_map and target in node_map:
+            source_node = node_map[source]
+            target_node = node_map[target]
+            
+            source_handle = edge.get("sourceHandle")
+            target_handle = edge.get("targetHandle")
+            
+            # Check source handle (output)
+            source_type = source_node.get("data", {}).get("nodeType")
+            if source_type and source_type in node_info:
+                output_names = node_info[source_type].get("output_name", [])
+                if source_handle and output_names and source_handle not in output_names:
+                    # This might be a warning, not an error
+                    pass
+            
+            # Check target handle (input)
+            target_type = target_node.get("data", {}).get("nodeType")
+            if target_type and target_type in node_info:
+                input_def = node_info[target_type].get("input", {})
+                all_inputs = list(input_def.get("required", {}).keys()) + list(input_def.get("optional", {}).keys())
+                if target_handle and all_inputs and target_handle not in all_inputs:
+                    # This might be a warning, not an error
+                    pass
+    
+    return errors
+
+
+def _build_edge_map(edges: List[Dict]) -> Dict[str, Dict]:
+    """Build mapping from edge ID to edge data for XyFlow V2 format."""
+    edge_map = {}
+    for edge in edges:
+        edge_id = edge.get("id")
+        if edge_id is not None:
+            edge_map[edge_id] = {
+                "id": edge_id,
+                "source": edge.get("source"),
+                "target": edge.get("target"),
+                "sourceHandle": edge.get("sourceHandle"),
+                "targetHandle": edge.get("targetHandle"),
+            }
+    return edge_map

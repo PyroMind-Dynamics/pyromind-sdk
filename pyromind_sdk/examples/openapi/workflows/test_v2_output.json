@@ -1,0 +1,227 @@
+{
+  "id": "d8a04ddf-509d-46ae-b49b-0e6215c1f6d9",
+  "name": "Demo Workflow",
+  "nodes": [
+    {
+      "id": "CloneAndCacheModel-1773125554190",
+      "type": "default",
+      "position": {
+        "x": 50.0,
+        "y": 50.0
+      },
+      "data": {
+        "label": "Clone Model",
+        "nodeType": "CloneAndCacheModel",
+        "nodeDefinition": {
+          "input": {
+            "required": {
+              "model": [
+                [
+                  "Qwen/Qwen3-0.6B",
+                  "Qwen/Qwen3-1.7B",
+                  "Qwen/Qwen3-8B"
+                ],
+                {
+                  "default": "Qwen/Qwen3-0.6B"
+                }
+              ],
+              "target_path": [
+                [
+                  "/workspace/models/"
+                ],
+                {
+                  "default": "/workspace/models/"
+                }
+              ]
+            },
+            "optional": {}
+          },
+          "output": [
+            "MODEL"
+          ],
+          "output_is_list": [],
+          "output_name": [
+            "model_path"
+          ],
+          "name": "CloneAndCacheModel",
+          "display_name": "Clone Model",
+          "description": "Clone models for training and evaluation.",
+          "python_module": "test_nodes",
+          "category": "models",
+          "output_node": false,
+          "experimental": false,
+          "deprecated": false
+        },
+        "config": {
+          "model": "Qwen/Qwen3-0.6B",
+          "target_path": "/workspace/models/"
+        },
+        "isReadOnly": true
+      },
+      "measured": {
+        "width": 150.0,
+        "height": 86.0
+      },
+      "selected": false,
+      "dragging": false,
+      "properties": {}
+    },
+    {
+      "id": "LLMOrVLMInference-1773125554190",
+      "type": "default",
+      "position": {
+        "x": 500.0,
+        "y": 50.0
+      },
+      "data": {
+        "label": "Inference (LLM / VLM)",
+        "nodeType": "LLMOrVLMInference",
+        "nodeDefinition": {
+          "input": {
+            "required": {
+              "model_path": [
+                "MODEL"
+              ],
+              "prompt": [
+                "STRING",
+                {
+                  "default": "Hello, how are you?"
+                }
+              ],
+              "max_tokens": [
+                "INT",
+                {
+                  "default": 100,
+                  "min": 1,
+                  "max": 4096
+                }
+              ],
+              "temperature": [
+                "FLOAT",
+                {
+                  "default": 0.7,
+                  "min": 0,
+                  "max": 2
+                }
+              ]
+            },
+            "optional": {
+              "lora_path": [
+                "MODEL"
+              ]
+            }
+          },
+          "output": [
+            "STRING"
+          ],
+          "output_is_list": [],
+          "output_name": [
+            "response"
+          ],
+          "name": "LLMOrVLMInference",
+          "display_name": "Inference (LLM / VLM)",
+          "description": "LLM/VLM inference node",
+          "python_module": "test_nodes",
+          "category": "LLM & VLM",
+          "output_node": false,
+          "experimental": false,
+          "deprecated": false
+        },
+        "config": {
+          "prompt": "What is machine learning?",
+          "max_tokens": 100,
+          "temperature": 0.7
+        },
+        "isReadOnly": true
+      },
+      "measured": {
+        "width": 150.0,
+        "height": 168.0
+      },
+      "selected": false,
+      "dragging": false,
+      "properties": {}
+    },
+    {
+      "id": "ShowResultNode-1773125554190",
+      "type": "default",
+      "position": {
+        "x": 950.0,
+        "y": 50.0
+      },
+      "data": {
+        "label": "Show Result",
+        "nodeType": "ShowResultNode",
+        "nodeDefinition": {
+          "input": {
+            "required": {
+              "result": [
+                "STRING",
+                {
+                  "default": ""
+                }
+              ]
+            },
+            "optional": {}
+          },
+          "output": [],
+          "output_is_list": [],
+          "output_name": [],
+          "name": "ShowResultNode",
+          "display_name": "Show Result",
+          "description": "Show result",
+          "python_module": "test_nodes",
+          "category": "output",
+          "output_node": false,
+          "experimental": false,
+          "deprecated": false
+        },
+        "config": {
+          "result": ""
+        },
+        "isReadOnly": true
+      },
+      "measured": {
+        "width": 150.0,
+        "height": 86.0
+      },
+      "selected": false,
+      "dragging": false,
+      "properties": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "xy-edge__CloneAndCacheModel-1773125554190model_path-LLMOrVLMInference-1773125554190model_path",
+      "source": "CloneAndCacheModel-1773125554190",
+      "target": "LLMOrVLMInference-1773125554190",
+      "sourceHandle": "model_path",
+      "targetHandle": "model_path",
+      "type": "default",
+      "animated": true,
+      "style": {
+        "stroke": "#6366f1",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "xy-edge__LLMOrVLMInference-1773125554190response-ShowResultNode-1773125554190result",
+      "source": "LLMOrVLMInference-1773125554190",
+      "target": "ShowResultNode-1773125554190",
+      "sourceHandle": "response",
+      "targetHandle": "result",
+      "type": "default",
+      "animated": true,
+      "style": {
+        "stroke": "#6366f1",
+        "strokeWidth": 2
+      }
+    }
+  ],
+  "viewport": {
+    "x": 0,
+    "y": 0,
+    "zoom": 1
+  },
+  "timestamp": "2026-03-10T06:52:34.000Z"
+}

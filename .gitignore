@@ -25,3 +25,6 @@ htmlcov/
 
 # Ignore test_storage.sh in root directory only
 /test_storage.sh
+/.iflow
+/openspec
+/command_setup.sh

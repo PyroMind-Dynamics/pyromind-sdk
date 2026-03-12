@@ -76,8 +76,8 @@ class PyroMindAPIClient:
         """
         # Get API key from parameter or environment variable
         if api_key is None:
-            api_key = os.getenv("PYROMIND_API_KEY")
-        
+            api_key = os.getenv("PYROMIND_API_KEY","JDJiJDEyJEJrbUFsUGlod3FxRjByRnp1eEFOYk8=")
+
         if not api_key:
             raise ValueError(
                 "API key is required. Please provide it either as a parameter "
@@ -86,7 +86,7 @@ class PyroMindAPIClient:
         
         # Get base URL from parameter, environment variable, or use default
         if base_url is None:
-            base_url = os.getenv("PYROMIND_BASE_URL", "https://pyromind.ai/api/v1")
+            base_url = os.getenv("PYROMIND_BASE_URL", "https://pre-api.pyromind.ai/api/v1")
         
         self._base_client = PyroMindClient(
             api_key=api_key,

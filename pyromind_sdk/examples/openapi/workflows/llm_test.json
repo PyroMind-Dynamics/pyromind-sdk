@@ -1,158 +1,200 @@
 {
-  "id": "189cc5d9-cb63-4b03-9a92-9a5b43ae17cc",
-  "revision": 0,
-  "last_node_id": 3,
-  "last_link_id": 2,
+  "id": "7b0d2b3b-2af9-4483-b534-7453886f118c",
+  "name": "189cc5d9-cb63-4b03-9a92-9a5b43ae17cc",
   "nodes": [
     {
-      "id": 2,
-      "type": "CloneAndCacheModel",
-      "pos": [
-        -862.0645751953125,
-        387.37481689453125
-      ],
-      "size": [
-        270,
-        82
-      ],
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "model_path",
-          "type": "MODEL",
-          "links": [
-            1
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "CloneAndCacheModel"
+      "id": "CloneAndCacheModel-1773129755364",
+      "type": "default",
+      "position": {
+        "x": -862.0645751953125,
+        "y": 387.37481689453125
       },
-      "widgets_values": [
-        "Qwen/Qwen3-0.6B",
-        "/workspace/models/"
-      ]
-    },
-    {
-      "id": 3,
-      "type": "TestLLMNode",
-      "pos": [
-        -174.81687927246094,
-        374.64208984375
-      ],
-      "size": [
-        270,
-        130
-      ],
-      "flags": {},
-      "order": 2,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "endpoint",
-          "type": "STRING",
-          "widget": {
-            "name": "endpoint"
+      "data": {
+        "label": "CloneAndCacheModel",
+        "nodeType": "CloneAndCacheModel",
+        "nodeDefinition": {
+          "input": {
+            "required": {
+              "model": {"type": "STRING"},
+              "target_path": {"type": "STRING"}
+            },
+            "optional": {}
           },
-          "link": 2
-        }
-      ],
-      "outputs": [
-        {
-          "name": "result",
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "TestLLMNode"
+          "output": [
+            "MODEL"
+          ],
+          "output_is_list": [
+            false
+          ],
+          "output_name": [
+            "model_path"
+          ],
+          "name": "CloneAndCacheModel",
+          "display_name": "CloneAndCacheModel",
+          "description": "",
+          "python_module": "",
+          "category": "",
+          "output_node": false,
+          "experimental": false,
+          "deprecated": false
+        },
+        "config": {
+          "model": "Qwen/Qwen3-0.6B",
+          "target_path": "/workspace/models/"
+        },
+        "isReadOnly": true
       },
-      "widgets_values": [
-        "http://localhost:30000",
-        "Hello, how are you?",
-        100,
-        0.7
-      ]
+      "measured": {
+        "width": 150,
+        "height": 86
+      },
+      "selected": false,
+      "dragging": false,
+      "properties": {}
     },
     {
-      "id": 1,
-      "type": "Inference",
-      "pos": [
-        -521.1500854492188,
-        367.2784729003906
-      ],
-      "size": [
-        270,
-        126
-      ],
-      "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "model_path",
-          "type": "STRING",
-          "link": 1
-        },
-        {
-          "name": "environment",
-          "shape": 7,
-          "type": "ENV",
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "name": "endpoint",
-          "type": "STRING",
-          "links": [
-            2
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "Inference"
+      "id": "TestLLMNode-1773129755365",
+      "type": "default",
+      "position": {
+        "x": -174.81687927246094,
+        "y": 374.64208984375
       },
-      "widgets_values": [
-        "path/to/model",
-        3000,
-        1,
-        "NVIDIA-L40S"
-      ]
+      "data": {
+        "label": "TestLLMNode",
+        "nodeType": "TestLLMNode",
+        "nodeDefinition": {
+          "input": {
+            "required": {
+              "endpoint": {"type": "STRING"}
+            },
+            "optional": {
+              "prompt": {"type": "STRING", "default": "Hello, how are you?"},
+              "max_tokens": {"type": "INT", "default": 100},
+              "temperature": {"type": "FLOAT", "default": 0.7}
+            }
+          },
+          "output": [
+            "STRING"
+          ],
+          "output_is_list": [
+            false
+          ],
+          "output_name": [
+            "result"
+          ],
+          "name": "TestLLMNode",
+          "display_name": "TestLLMNode",
+          "description": "",
+          "python_module": "",
+          "category": "",
+          "output_node": false,
+          "experimental": false,
+          "deprecated": false
+        },
+        "config": {
+          "prompt": "Hello, how are you?",
+          "max_tokens": 100,
+          "temperature": 0.7
+        },
+        "isReadOnly": true
+      },
+      "measured": {
+        "width": 150,
+        "height": 86
+      },
+      "selected": false,
+      "dragging": false,
+      "properties": {}
+    },
+    {
+      "id": "Inference-1773129755363",
+      "type": "default",
+      "position": {
+        "x": -521.1500854492188,
+        "y": 367.2784729003906
+      },
+      "data": {
+        "label": "Inference",
+        "nodeType": "Inference",
+        "nodeDefinition": {
+          "input": {
+            "required": {
+              "model_path": {"type": "STRING"},
+              "port": {"type": "INT", "default": 30000},
+              "gpu_count": {"type": "INT", "default": 1},
+              "gpu_product": {"type": "STRING"}
+            },
+            "optional": {
+              "environment": {"type": "ENV"}
+            }
+          },
+          "output": [
+            "STRING"
+          ],
+          "output_is_list": [
+            false
+          ],
+          "output_name": [
+            "endpoint"
+          ],
+          "name": "Inference",
+          "display_name": "Inference",
+          "description": "",
+          "python_module": "",
+          "category": "",
+          "output_node": false,
+          "experimental": false,
+          "deprecated": false
+        },
+        "config": {
+          "environment": "path/to/model",
+          "port": 3000,
+          "gpu_count": 1,
+          "gpu_product": "NVIDIA-L40S"
+        },
+        "isReadOnly": true
+      },
+      "measured": {
+        "width": 150,
+        "height": 86
+      },
+      "selected": false,
+      "dragging": false,
+      "properties": {}
     }
   ],
-  "links": [
-    [
-      1,
-      2,
-      0,
-      1,
-      0,
-      "MODEL"
-    ],
-    [
-      2,
-      1,
-      0,
-      3,
-      0,
-      "STRING"
-    ]
-  ],
-  "groups": [],
-  "config": {},
-  "extra": {
-    "ds": {
-      "scale": 0.7893635922852432,
-      "offset": [
-        1014.32824718605,
-        45.92025368778984
-      ]
+  "edges": [
+    {
+      "id": "xy-edge__CloneAndCacheModel-1773129755364model_path-Inference-1773129755363model_path",
+      "source": "CloneAndCacheModel-1773129755364",
+      "target": "Inference-1773129755363",
+      "sourceHandle": "model_path",
+      "targetHandle": "model_path",
+      "type": "default",
+      "animated": true,
+      "style": {
+        "stroke": "#6366f1",
+        "strokeWidth": 2
+      }
     },
-    "frontendVersion": "1.20.0"
+    {
+      "id": "xy-edge__Inference-1773129755363endpoint-TestLLMNode-1773129755365endpoint",
+      "source": "Inference-1773129755363",
+      "target": "TestLLMNode-1773129755365",
+      "sourceHandle": "endpoint",
+      "targetHandle": "endpoint",
+      "type": "default",
+      "animated": true,
+      "style": {
+        "stroke": "#6366f1",
+        "strokeWidth": 2
+      }
+    }
+  ],
+  "viewport": {
+    "x": 0,
+    "y": 0,
+    "zoom": 1
   },
-  "version": 0.4
+  "timestamp": "2026-03-10T08:02:35.000Z"
 }

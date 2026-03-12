@@ -31,12 +31,29 @@ from .client import (
     PyroMindAPIClient,
 )
 
+# Export xyFlow models
+from .client.xyflow_models import (
+    PositionDTO,
+    ViewportDTO,
+    XyflowNodeDataDTO,
+    XyflowNodeDTO,
+    XyflowEdgeDTO,
+    XyflowWorkflowDTO,
+)
+
 # Export workflow functionality
 from .client.workflow import (
     WorkflowLiteConverter,
     LayoutGenerator,
     to_workflow_lite,
     to_workflow_standard,
+    XyflowWorkflowBuilder,
+    WorkflowFormat,
+    detect_format,
+    to_xyflow,
+    to_lite,
+    to_standard,
+    convert,
 )
 
 __all__ = [
@@ -56,10 +73,24 @@ __all__ = [
     "TrainingClient",
     "StorageClient",
     "PyroMindAPIClient",
+    # xyFlow models
+    "PositionDTO",
+    "ViewportDTO",
+    "XyflowNodeDataDTO",
+    "XyflowNodeDTO",
+    "XyflowEdgeDTO",
+    "XyflowWorkflowDTO",
     # Workflow functionality
     "WorkflowLiteConverter",
     "LayoutGenerator",
     "to_workflow_lite",
     "to_workflow_standard",
+    "XyflowWorkflowBuilder",
+    "WorkflowFormat",
+    "detect_format",
+    "to_xyflow",
+    "to_lite",
+    "to_standard",
+    "convert",
 ]
 
