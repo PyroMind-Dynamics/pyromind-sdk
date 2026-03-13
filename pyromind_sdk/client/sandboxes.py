@@ -7,7 +7,7 @@ This module provides a client for managing sandboxes via the PyroMind API.
 from typing import List, Optional, Dict, Any
 from .base import PyroMindClient
 from .models import (
-    SandboxCreateRequest,
+    SandboxRequest,
     SandboxResponse,
     ActionRequest,
     ActionResponse,
@@ -24,6 +24,50 @@ class SandboxesClient(PyroMindClient):
     Provides methods for creating, listing, getting, deleting sandboxes,
     executing actions, and managing VNC connections.
     """
+    
+    def _convert_sandbox_data(self, sandbox_data: dict, default_id: str = "") -> dict:
+        """
+        Convert API response format to SDK format.
+        
+        API uses: sandbox_id, sandbox_type, screen_size, endpoint, web_vnc_url
+        SDK expects: id, type, screen_resolution, endpoint_url
+        
+        Args:
+            sandbox_data: Sandbox data from API
+            default_id: Default ID to use if not found in sandbox_data
+            
+        Returns:
+            Converted sandbox data dict
+        """
+        if not isinstance(sandbox_data, dict):
+            return sandbox_data
+        
+        sandbox_id_value = sandbox_data.get("sandbox_id") or sandbox_data.get("id") or default_id
+        converted_sandbox = {
+            "id": sandbox_id_value,
+            "name": sandbox_data.get("name") or sandbox_id_value,
+            "type": sandbox_data.get("sandbox_type") or sandbox_data.get("type") or "",
+            "status": sandbox_data.get("status") or "",
+            "configuration": sandbox_data.get("configuration"),
+            "usage": sandbox_data.get("usage"),
+            "created_at": sandbox_data.get("created_at"),
+            "updated_at": sandbox_data.get("updated_at") or sandbox_data.get("last_activity"),
+            "endpoint_url": sandbox_data.get("endpoint") or sandbox_data.get("endpoint_url"),
+            "web_vnc_url": sandbox_data.get("web_vnc_url"),
+        }
+        
+        # Convert screen_size to screen_resolution if present
+        if "screen_size" in sandbox_data and sandbox_data["screen_size"]:
+            if converted_sandbox.get("configuration") is None:
+                converted_sandbox["configuration"] = {}
+            converted_sandbox["configuration"]["screen_resolution"] = sandbox_data["screen_size"]
+        
+        # Remove None values for optional fields, but keep required fields
+        converted_sandbox = {
+            k: v for k, v in converted_sandbox.items() 
+            if v is not None or k in ["id", "name", "type", "status"]
+        }
+        return converted_sandbox
     
     def list(self) -> List[SandboxResponse]:
         """
@@ -47,10 +91,16 @@ class SandboxesClient(PyroMindClient):
         else:
             sandboxes_data = []
         
-        # Convert each sandbox data to SandboxResponse
-        return [SandboxResponse(**sandbox) if isinstance(sandbox, dict) else sandbox for sandbox in sandboxes_data]
+        # Convert API response format to SDK format
+        converted_sandboxes = []
+        for sandbox in sandboxes_data if isinstance(sandboxes_data, list) else []:
+            if isinstance(sandbox, dict):
+                converted_sandbox = self._convert_sandbox_data(sandbox)
+                converted_sandboxes.append(SandboxResponse(**converted_sandbox))
+        
+        return converted_sandboxes
     
-    def create(self, request: SandboxCreateRequest) -> SandboxResponse:
+    def create(self, request: SandboxRequest) -> SandboxResponse:
         """
         Create a new sandbox
         
@@ -64,7 +114,10 @@ class SandboxesClient(PyroMindClient):
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         
-        # Backend returns the sandbox data directly in the data field
+        # Convert API response format to SDK format
+        if isinstance(data, dict):
+            data = self._convert_sandbox_data(data)
+        
         return SandboxResponse(**data)
     
     def get_sandbox(self, sandbox_id: str) -> SandboxResponse:
@@ -81,7 +134,38 @@ class SandboxesClient(PyroMindClient):
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
         
-        # Backend returns the sandbox data directly in the data field
+        # Convert API response format to SDK format
+        if isinstance(data, dict):
+            data = self._convert_sandbox_data(data, sandbox_id)
+        
+        return SandboxResponse(**data)
+    
+    def update(self, sandbox_id: str, request) -> SandboxResponse:
+        """
+        Update a sandbox
+        
+        Args:
+            sandbox_id: ID of the sandbox to update
+            request: SandboxRequest with updated configuration
+            
+        Returns:
+            SandboxResponse object
+        """
+        # Import here to avoid circular dependency
+        from .models import SandboxRequest
+        if not isinstance(request, SandboxRequest):
+            request = SandboxRequest(**request)
+        
+        request_dict = request.model_dump(exclude_none=True)
+        
+        response = self.put(f"/sandboxes/{sandbox_id}", json_data=request_dict)
+        # API returns {success: True, data: {...}} format
+        data = self._extract_data(response)
+        
+        # Convert API response format to SDK format
+        if isinstance(data, dict):
+            data = self._convert_sandbox_data(data, sandbox_id)
+        
         return SandboxResponse(**data)
     
     def delete(self, sandbox_id: str) -> None:
@@ -92,6 +176,46 @@ class SandboxesClient(PyroMindClient):
             sandbox_id: ID of the sandbox to delete
         """
         self._request("DELETE", f"/sandboxes/{sandbox_id}")
+    
+    def pause(self, sandbox_id: str) -> SandboxResponse:
+        """
+        Pause a running sandbox
+        
+        Args:
+            sandbox_id: ID of the sandbox to pause
+            
+        Returns:
+            SandboxResponse object
+        """
+        response = self.post(f"/sandboxes/{sandbox_id}/pause")
+        # API returns {success: True, data: {...}} format
+        data = self._extract_data(response)
+        
+        # Convert API response format to SDK format
+        if isinstance(data, dict):
+            data = self._convert_sandbox_data(data, sandbox_id)
+        
+        return SandboxResponse(**data)
+    
+    def resume(self, sandbox_id: str) -> SandboxResponse:
+        """
+        Resume a paused sandbox
+        
+        Args:
+            sandbox_id: ID of the sandbox to resume
+            
+        Returns:
+            SandboxResponse object
+        """
+        response = self.post(f"/sandboxes/{sandbox_id}/resume")
+        # API returns {success: True, data: {...}} format
+        data = self._extract_data(response)
+        
+        # Convert API response format to SDK format
+        if isinstance(data, dict):
+            data = self._convert_sandbox_data(data, sandbox_id)
+        
+        return SandboxResponse(**data)
     
     def execute_action(self, sandbox_id: str, request: ActionRequest) -> ActionResponse:
         """
@@ -146,17 +270,27 @@ class SandboxesClient(PyroMindClient):
     def get_vnc(self, sandbox_id: str) -> Dict[str, Any]:
         """
         Get VNC connection information for a sandbox
-        
+
         Args:
             sandbox_id: ID of the sandbox
-            
+
         Returns:
             Dictionary with VNC connection information
         """
         response = self.get(f"/sandboxes/{sandbox_id}/vnc")
         # API returns {success: True, data: {...}} format
         data = self._extract_data(response)
-        
+
         # Backend returns the VNC data directly in the data field
         vnc_response = VNCResponse(**data)
-        return vnc_response.connection.model_dump()
+
+        # Return a dict with all VNC information for backward compatibility
+        result = {
+            "host": vnc_response.connection_info.host,
+            "port": vnc_response.connection_info.port,
+            "password": vnc_response.password,
+            "web_vnc_url": vnc_response.web_vnc_url,
+            "encryption": vnc_response.connection_info.encryption,
+            "auth_type": vnc_response.connection_info.auth_type,
+        }
+        return result

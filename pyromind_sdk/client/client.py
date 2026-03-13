@@ -26,7 +26,7 @@ class PyroMindAPIClient:
                 provided, will raise ValueError.
         base_url: Base URL for the API. If not provided, will try to read from
                  PYROMIND_BASE_URL environment variable. If neither is provided,
-                 defaults to https://pyromind.ai/api/v1
+                 defaults to https://api.pyromind.ai/api/v1
         timeout: Request timeout in seconds (default: 30)
         max_retries: Maximum number of retries for failed requests (default: 3)
     
@@ -70,7 +70,7 @@ class PyroMindAPIClient:
                     read from PYROMIND_API_KEY environment variable.
             base_url: Base URL for the API. If not provided, will try to read from
                      PYROMIND_BASE_URL environment variable. If neither is provided,
-                     defaults to https://pyromind.ai/api/v1
+                     defaults to https://api.pyromind.ai/api/v1
             timeout: Request timeout in seconds
             max_retries: Maximum number of retries for failed requests
         """
@@ -86,7 +86,7 @@ class PyroMindAPIClient:
         
         # Get base URL from parameter, environment variable, or use default
         if base_url is None:
-            base_url = os.getenv("PYROMIND_BASE_URL", "https://pyromind.ai/api/v1")
+            base_url = os.getenv("PYROMIND_BASE_URL", "https://api.pyromind.ai/api/v1")
         
         self._base_client = PyroMindClient(
             api_key=api_key,

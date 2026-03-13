@@ -30,10 +30,10 @@ def create_jupyter_example():
         print("Creating a new Jupyter instance...")
         instance = client.instance.create(
             JupyterRequest(
-                name="example-jupyter",
+                name=f"example-jupyter-{int(time.time())}",
                 resources=ResourceConfig(
                     cpu="2",
-                    memory="4Gi",
+                    memory="18Gi",
                     gpu=0
                 ),
                 timeout=3600  # Timeout in seconds (1 hour)
@@ -122,7 +122,8 @@ def update_jupyter_example(jupyter_id: str):
                 resources=ResourceConfig(
                     cpu=4,      # CPU as int 4 (int format)
                     memory=32,  # Memory as 32Gi (int)
-                    gpu=1         # GPU count: 1
+                    gpu=1,         # GPU count: 1
+                    gpu_card="L40S"
                 )
             )
         )

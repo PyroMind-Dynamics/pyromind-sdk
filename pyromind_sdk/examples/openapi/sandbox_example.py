@@ -13,7 +13,7 @@ If neither is provided, the client will raise a ValueError.
 
 from pyromind_sdk import PyroMindAPIClient, PyroMindAPIError
 from pyromind_sdk.client.models import (
-    SandboxCreateRequest,
+    SandboxRequest,
     SandboxConfiguration,
     SandboxType,
     ResourceConfig,
@@ -21,6 +21,7 @@ from pyromind_sdk.client.models import (
     ActionRequest,
     ActionParameters,
 )
+import time
 
 
 def create_sandbox_example():
@@ -31,24 +32,19 @@ def create_sandbox_example():
     try:
         print("Creating a new sandbox...")
         sandbox = client.sandboxes.create(
-            SandboxCreateRequest(
-                name="example-sandbox",
-                type=SandboxType.LINUX,
+            SandboxRequest(
+                name=f"example-sandbox-{int(time.time())}",
+                sandbox_type=SandboxType.WINDOWS,
+                resources=ResourceConfig(
+                    cpu="2",
+                    memory="4Gi",
+                    gpu=0
+                ),
                 configuration=SandboxConfiguration(
-                    image="ubuntu:22.04",
-                    resources=ResourceConfig(
-                        cpu="2",
-                        memory="4Gi",
-                        gpu=0
-                    ),
                     screen_resolution=ScreenResolution(
                         width=1920,
                         height=1080
-                    ),
-                    environment_variables={
-                        "ENV_VAR_1": "value1",
-                        "ENV_VAR_2": "value2"
-                    }
+                    )
                 )
             )
         )
@@ -60,6 +56,86 @@ def create_sandbox_example():
         
     except PyroMindAPIError as e:
         print(f"✗ Failed to create sandbox: {e.message}")
+        return None
+    except Exception as e:
+        print(f"✗ Failed to create sandbox: {e}")
+        return None
+    finally:
+        client.close()
+
+
+def update_sandbox_example(sandbox_id: str):
+    """Example: Update a sandbox"""
+    # API key is read from PYROMIND_API_KEY environment variable
+    client = PyroMindAPIClient()
+    
+    try:
+        print(f"Updating sandbox {sandbox_id}...")
+        updated_sandbox = client.sandboxes.update(
+            sandbox_id=sandbox_id,
+            request=SandboxRequest(
+                name=f"updated-sandbox-{int(time.time())}",
+                resources=ResourceConfig(
+                    cpu="4",
+                    memory="8Gi",
+                    gpu=0
+                ),
+                configuration=SandboxConfiguration(
+                    screen_resolution=ScreenResolution(
+                        width=2560,
+                        height=1440
+                    )
+                ),
+                sandbox_type=SandboxType.WINDOWS
+            )
+        )
+        print(f"✓ Sandbox updated successfully!")
+        print(f"  Name: {updated_sandbox.name}")
+        print(f"  Status: {updated_sandbox.status}")
+        return updated_sandbox
+        
+    except PyroMindAPIError as e:
+        print(f"✗ Failed to update sandbox: {e.message}")
+        return None
+    finally:
+        client.close()
+
+
+def pause_sandbox_example(sandbox_id: str):
+    """Example: Pause a sandbox"""
+    # API key is read from PYROMIND_API_KEY environment variable
+    client = PyroMindAPIClient()
+    
+    try:
+        print(f"Pausing sandbox {sandbox_id}...")
+        sandbox = client.sandboxes.pause(sandbox_id)
+        print(f"✓ Sandbox paused successfully!")
+        print(f"  Name: {sandbox.name}")
+        print(f"  Status: {sandbox.status}")
+        return sandbox
+        
+    except PyroMindAPIError as e:
+        print(f"✗ Failed to pause sandbox: {e.message}")
+        return None
+    finally:
+        client.close()
+
+
+def resume_sandbox_example(sandbox_id: str):
+    """Example: Resume a sandbox"""
+    # API key is read from PYROMIND_API_KEY environment variable
+    client = PyroMindAPIClient()
+    
+    try:
+        print(f"Resuming sandbox {sandbox_id}...")
+        sandbox = client.sandboxes.resume(sandbox_id)
+        print(f"✓ Sandbox resumed successfully!")
+        print(f"  Name: {sandbox.name}")
+        print(f"  Status: {sandbox.status}")
+        return sandbox
+        
+    except PyroMindAPIError as e:
+        print(f"✗ Failed to resume sandbox: {e.message}")
         return None
     finally:
         client.close()
@@ -97,7 +173,7 @@ def get_sandbox_example(sandbox_id: str):
     """Example: Get a specific sandbox"""
     # API key is read from PYROMIND_API_KEY environment variable
     client = PyroMindAPIClient()
-    
+
     try:
         print(f"Getting sandbox {sandbox_id}...")
         sandbox = client.sandboxes.get_sandbox(sandbox_id)
@@ -105,9 +181,13 @@ def get_sandbox_example(sandbox_id: str):
         print(f"  Name: {sandbox.name}")
         print(f"  Type: {sandbox.type}")
         print(f"  Status: {sandbox.status}")
-        print(f"  Image: {sandbox.configuration.image}")
+        if sandbox.configuration:
+            if sandbox.configuration.screen_resolution:
+                print(f"  Screen Resolution: {sandbox.configuration.screen_resolution.width}x{sandbox.configuration.screen_resolution.height}")
+            if sandbox.configuration.auto_destroy is not None:
+                print(f"  Auto Destroy: {sandbox.configuration.auto_destroy}")
         return sandbox
-        
+
     except PyroMindAPIError as e:
         print(f"✗ Failed to get sandbox: {e.message}")
         return None
@@ -133,12 +213,10 @@ def execute_action_example(sandbox_id: str):
             )
         )
         print(f"✓ Action executed!")
-        print(f"  Action ID: {action.result.action_id}")
-        print(f"  Status: {action.result.status}")
+        print(f"  Action ID: {action.action_id}")
+        print(f"  Status: {action.status}")
         if action.result.output:
             print(f"  Output: {action.result.output}")
-        if action.result.error:
-            print(f"  Error: {action.result.error}")
         return action
         
     except PyroMindAPIError as e:
@@ -203,6 +281,9 @@ def main():
         # Get sandbox details
         get_sandbox_example(sandbox_id)
         
+        # Update sandbox
+        update_sandbox_example(sandbox_id)
+        
         # Execute an action
         execute_action_example(sandbox_id)
         
@@ -217,6 +298,9 @@ def main():
             import time
             print("\nWaiting for sandbox to be ready...")
             time.sleep(2)
+            
+            # Update sandbox
+            update_sandbox_example(sandbox_id)
             
             # Execute an action
             execute_action_example(sandbox_id)

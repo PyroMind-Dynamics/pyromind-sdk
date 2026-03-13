@@ -74,13 +74,29 @@ class ResourceConfig(BaseModel):
 # Sandbox Models
 class SandboxType(str, Enum):
     """Sandbox type enumeration"""
-    LINUX = "linux"
-    WINDOWS = "windows"
+    LINUX = "code"
+    WINDOWS = "win"
+    MAC = "mac"
+    ANDROID = "android"
+    SEARCH = "search"
+    
+    @classmethod
+    def from_api(cls, value: str) -> 'SandboxType':
+        """Convert API value to SandboxType enum"""
+        # Map old API values to new enum values
+        mapping = {
+            'linux': 'code',
+            'windows': 'win'
+        }
+        normalized = mapping.get(value, value)
+        return cls(normalized)
 
 
 class SandboxStatus(str, Enum):
     """Sandbox status enumeration"""
     CREATING = "creating"
+    STARTING = "starting"
+    PENDING = "pending"
     RUNNING = "running"
     STOPPED = "stopped"
     ERROR = "error"
@@ -94,21 +110,25 @@ class ScreenResolution(BaseModel):
 
 class SandboxConfiguration(BaseModel):
     """Sandbox configuration model"""
-    image: str
-    resources: Optional[ResourceConfig] = None
     screen_resolution: Optional[ScreenResolution] = None
-    environment_variables: Optional[Dict[str, str]] = None
+    auto_destroy: Optional[bool] = True
+    vnc_password: Optional[str] = None
 
 
-class SandboxCreateRequest(BaseModel):
+class SandboxRequest(BaseModel):
     """Request model for creating a sandbox"""
-    name: str
-    type: SandboxType
-    configuration: SandboxConfiguration
+    sandbox_type: SandboxType
+    resources: Optional[ResourceConfig] = None
+    configuration: Optional[SandboxConfiguration] = None
+    name: Optional[str] = None
 
 
 class SandboxUsage(BaseModel):
     """Sandbox usage statistics"""
+    cpu_percent: Optional[float] = None
+    memory_used: Optional[str] = None
+    storage_used: Optional[str] = None
+    # Legacy fields for backward compatibility
     cpu_usage: Optional[float] = None
     memory_usage: Optional[float] = None
     gpu_usage: Optional[float] = None
@@ -119,11 +139,18 @@ class SandboxResponse(BaseModel):
     id: str
     name: str
     type: SandboxType
-    status: SandboxStatus
-    configuration: SandboxConfiguration
+    status: str
+    configuration: Optional[SandboxConfiguration] = None
     usage: Optional[SandboxUsage] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    endpoint_url: Optional[str] = None
+    web_vnc_url: Optional[str] = None
+    uid: Optional[str] = None
+    endpoint: Optional[str] = None
+    screen_size: Optional[ScreenResolution] = None
+    last_activity: Optional[datetime] = None
+
 
 
 class SandboxListAPIResponse(BaseModel):
@@ -147,10 +174,16 @@ class ActionStatus(str, Enum):
 
 class ActionParameters(BaseModel):
     """Action parameters model"""
+    # Legacy fields for command execution
     command: Optional[str] = None
     working_directory: Optional[str] = None
     environment_variables: Optional[Dict[str, str]] = None
     timeout: Optional[int] = None
+    # New fields for sandbox automation
+    coordinates: Optional[List[int]] = None
+    text: Optional[str] = None
+    time: Optional[float] = None
+    options: Optional[Dict[str, Any]] = None
 
 
 class ActionRequest(BaseModel):
@@ -161,19 +194,23 @@ class ActionRequest(BaseModel):
 
 class ActionResult(BaseModel):
     """Action result model"""
-    action_id: str
-    status: ActionStatus
+    success: bool
+    message: Optional[str] = None
+    screenshot: Optional[str] = None  # base64 encoded image
+    coordinates: Optional[List[int]] = None
+    execution_time: Optional[float] = None
     output: Optional[str] = None
-    error: Optional[str] = None
-    exit_code: Optional[int] = None
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
 
 
 class ActionResponse(BaseModel):
     """Action response model"""
-    result: ActionResult
-
+    action_id: str
+    action: str
+    status: ActionStatus
+    parameters: Optional[ActionParameters] = None
+    result: Optional[ActionResult] = None
+    current_state: Optional[str] = None
+    timestamp: datetime
 
 class ActionAPIResponse(BaseModel):
     """Action API response"""
@@ -195,13 +232,20 @@ class VNCConnectionInfo(BaseModel):
     """VNC connection information"""
     host: str
     port: int
+    encryption: str
+    auth_type: str
+    # Legacy fields for backward compatibility
     password: Optional[str] = None
     websocket_url: Optional[str] = None
 
 
 class VNCResponse(BaseModel):
     """VNC response model"""
-    connection: VNCConnectionInfo
+    password: Optional[str] = None
+    web_vnc_url: str
+    connection_info: VNCConnectionInfo
+    # Legacy field for backward compatibility
+    connection: Optional[VNCConnectionInfo] = None
 
 
 class VncAPIResponse(BaseModel):

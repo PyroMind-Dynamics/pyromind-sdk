@@ -517,7 +517,7 @@ class TestUpdateJupyterInstance:
         assert updated_instance.id == test_instance_id
         assert updated_instance.name is not None
     
-    def test_update_jupyter_example_function(self, test_instance_id):
+    def test_update_jupyter_example_function(self, client, test_instance_id):
         """Test the update_jupyter_example function"""
         # Wait a bit before updating
         wait_for_instance_status(client, test_instance_id, "running")
@@ -606,7 +606,7 @@ class TestResumeJupyterInstance:
                 pytest.skip("Cannot get instance, skipping resume test")
             
             # If already running, we need to pause it first
-            if instance.status.lower() in ['running', 'starting']:
+            if instance.status.lower() in ['pending']:
                 try:
                     wait_for_instance_status(client, test_instance_id, "stopped")
                     pause_jupyter_example(test_instance_id)
@@ -631,7 +631,7 @@ class TestResumeJupyterInstance:
                             pytest.skip(f"Cannot pause instance: {str(e)}")
                     except Exception:
                         pytest.skip(f"Cannot pause instance: {str(e)}")
-            elif instance.status.lower() not in ['stopped', 'failed']:
+            elif instance.status.lower() in ['failed']:
                 pytest.skip(f"Instance is in unexpected state: {instance.status}")
         except Exception as e:
             pytest.skip(f"Cannot get instance status: {str(e)}")
@@ -663,7 +663,7 @@ class TestDeleteJupyterInstance:
                 name=f"test-delete-{int(time.time())}",
                 resources=ResourceConfig(
                     cpu="2",
-                    memory="16Gi",
+                    memory="18Gi",
                     gpu=0
                 ),
                 timeout=3600

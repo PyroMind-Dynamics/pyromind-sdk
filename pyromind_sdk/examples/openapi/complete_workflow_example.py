@@ -18,7 +18,7 @@ If neither is provided, the client will raise a ValueError.
 
 from pyromind_sdk import PyroMindAPIClient, PyroMindAPIError
 from pyromind_sdk.client.models import (
-    SandboxCreateRequest,
+    SandboxRequest,
     SandboxConfiguration,
     SandboxType,
     ResourceConfig,
@@ -43,9 +43,9 @@ def complete_workflow():
         print("\n[Step 1] Creating sandbox for data preparation...")
         try:
             sandbox = client.sandboxes.create(
-                SandboxCreateRequest(
+                SandboxRequest(
                     name="data-prep-sandbox",
-                    type=SandboxType.LINUX,
+                    type=SandboxType.WINDOWS,
                     configuration=SandboxConfiguration(
                         image="ubuntu:22.04",
                         resources=ResourceConfig(cpu="2", memory="4Gi")

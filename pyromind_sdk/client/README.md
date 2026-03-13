@@ -17,7 +17,7 @@ The API key and base URL can be provided in two ways:
 1. **Environment variables (recommended):**
 ```bash
 export PYROMIND_API_KEY="your-api-key"
-export PYROMIND_BASE_URL="https://pyromind.ai/api/v1"  # Optional, defaults to https://pyromind.ai/api/v1
+export PYROMIND_BASE_URL="https://api.pyromind.ai/api/v1"  # Optional, defaults to https://pyromind.ai/api/v1
 ```
 
 2. **As parameters:**
@@ -39,7 +39,7 @@ from pyromind_sdk import PyroMindAPIClient
 from pyromind_sdk.client.models import (
     JupyterRequest,
     ResourceConfig,
-    SandboxCreateRequest,
+    SandboxRequest,
     SandboxConfiguration,
     SandboxType,
     InferenceJobCreateRequest,
@@ -73,7 +73,7 @@ for sandbox in sandboxes:
 
 ```python
 from pyromind_sdk.client.models import (
-    SandboxCreateRequest,
+    SandboxRequest,
     SandboxConfiguration,
     SandboxType,
     ResourceConfig,
@@ -81,7 +81,7 @@ from pyromind_sdk.client.models import (
 )
 
 sandbox = client.sandboxes.create(
-    SandboxCreateRequest(
+    SandboxRequest(
         name="my-sandbox",
         type=SandboxType.LINUX,
         configuration=SandboxConfiguration(
