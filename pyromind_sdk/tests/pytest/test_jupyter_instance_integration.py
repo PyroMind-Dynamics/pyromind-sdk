@@ -349,7 +349,7 @@ class TestListJupyterInstances:
             assert instance.status is not None, f"Instance at index {idx} has None 'status'"
             print(f"[TEST] Instance {idx + 1}: id={instance.id}, name={instance.name}, status={instance.status}")
     
-    def test_list_jupyter_example_function(self):
+    def test_list_jupyter_example_function(self, api_key):
         """Test the list_jupyter_example function"""
         instances = list_jupyter_example()
         
@@ -427,7 +427,7 @@ class TestCreateJupyterInstance:
         except Exception as e:
             print(f"[WARNING] Unexpected error during cleanup: {type(e).__name__}: {str(e)}")
     
-    def test_create_jupyter_example_function(self, instance_tracker):
+    def test_create_jupyter_example_function(self, api_key, instance_tracker):
         """Test the create_jupyter_example function"""
         instance_id = create_jupyter_example()
         
@@ -733,7 +733,7 @@ class TestDeleteJupyterInstance:
             # Good, instance was deleted (raises error when getting)
             pass
     
-    def test_delete_jupyter_example_function(self, instance_tracker):
+    def test_delete_jupyter_example_function(self, api_key, instance_tracker):
         """Test the delete_jupyter_example function"""
         # Create a temporary instance to delete
         instance_id = create_jupyter_example()
