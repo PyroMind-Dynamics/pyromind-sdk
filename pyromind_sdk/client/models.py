@@ -286,7 +286,7 @@ class JupyterAPIResponse(BaseModel):
 
 
 # Inference Models
-class InferenceJobCreateRequest(BaseModel):
+class InferenceJobRequest(BaseModel):
     """Request model for creating an inference job"""
     model_path: str
     inference_framework: str
@@ -296,19 +296,13 @@ class InferenceJobCreateRequest(BaseModel):
     name: Optional[str] = None
 
 
-class InferenceJobUpdateRequest(BaseModel):
-    """Request model for updating an inference job"""
-    name: Optional[str] = None
-    timeout: Optional[int] = None
-    resources: Optional[ResourceConfig] = None
-    environment_variables: Optional[Dict[str, str]] = None
-
 
 class InferenceJobResponse(BaseModel):
     """Inference job response model"""
     id: str = Field(alias="job_id")
     name: str
     model_path: str
+    inference_framework: Optional[str] = None
     image: Optional[str] = None
     status: str
     uid: Optional[str] = None

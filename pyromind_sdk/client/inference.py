@@ -7,7 +7,7 @@ This module provides a client for managing inference jobs via the PyroMind API.
 from typing import List
 from .base import PyroMindClient
 from .models import (
-    InferenceJobCreateRequest,
+    InferenceJobRequest,
     InferenceJobResponse,
 )
 
@@ -44,7 +44,7 @@ class InferenceClient(PyroMindClient):
         # Convert each job data to InferenceJobResponse
         return [InferenceJobResponse(**job) if isinstance(job, dict) else job for job in jobs_data]
     
-    def create(self, request: InferenceJobCreateRequest) -> str:
+    def create(self, request: InferenceJobRequest) -> str:
         """
         Create a new inference job
         
@@ -91,15 +91,15 @@ class InferenceClient(PyroMindClient):
         
         Args:
             job_id: ID of the inference job to update
-            request: InferenceJobUpdateRequest with updated configuration
+            request: InferenceJobRequest with updated configuration
             
         Returns:
             InferenceJobResponse object
         """
         # Import here to avoid circular dependency
-        from .models import InferenceJobUpdateRequest
-        if not isinstance(request, InferenceJobUpdateRequest):
-            request = InferenceJobUpdateRequest(**request)
+        from .models import InferenceJobRequest
+        if not isinstance(request, InferenceJobRequest):
+            request = InferenceJobRequest(**request)
         
         request_dict = request.model_dump(exclude_none=True)
         

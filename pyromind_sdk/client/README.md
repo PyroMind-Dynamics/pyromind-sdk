@@ -42,7 +42,7 @@ from pyromind_sdk.client.models import (
     SandboxRequest,
     SandboxConfiguration,
     SandboxType,
-    InferenceJobCreateRequest,
+    InferenceJobRequest,
     TrainingTaskCreateRequest,
     TrainingFramework,
 )

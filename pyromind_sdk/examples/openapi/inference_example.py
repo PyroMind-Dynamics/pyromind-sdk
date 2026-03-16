@@ -13,8 +13,7 @@ If neither is provided, the client will raise a ValueError.
 
 from pyromind_sdk import PyroMindAPIClient, PyroMindAPIError
 from pyromind_sdk.client.models import (
-    InferenceJobCreateRequest,
-    InferenceJobUpdateRequest,
+    InferenceJobRequest,
     ResourceConfig,
 )
 import time
@@ -28,8 +27,8 @@ def create_inference_job_example():
     try:
         print("Creating a new inference job...")
         job_id = client.inference.create(
-            InferenceJobCreateRequest(
-                model_path="/models/Qwen3-VL-30B-A3B-Thinking-FP8",
+            InferenceJobRequest(
+                model_path="/workspace/models/Qwen/Qwen3-0.6B/",
                 inference_framework="sglang",
                 timeout=7200,
                 resources=ResourceConfig(
@@ -40,7 +39,7 @@ def create_inference_job_example():
                 ),
                 name=f"example-inference-{int(time.time())}",
                 environment_variables={
-                    "MODEL_PATH": "/models/Qwen3-VL-30B-A3B-Thinking-FP8",
+                    "MODEL_PATH": "/workspace/models/Qwen/Qwen3-0.6B/",
                 }
             )
         )
@@ -121,6 +120,8 @@ def get_inference_job_example(job_id: str):
     except PyroMindAPIError as e:
         print(f"✗ Failed to get inference job: {e.message}")
         return None
+    except Exception as e:
+        print(f"  Note: Could not fetch job details: {e}")
     finally:
         client.close()
 
@@ -134,15 +135,20 @@ def update_inference_job_example(job_id: str):
         print(f"Updating inference job {job_id}...")
         updated_job = client.inference.update(
             job_id=job_id,
-            request=InferenceJobUpdateRequest(
-                name=f"updated-inference-{int(time.time())}",
+            request=InferenceJobRequest(
+                model_path="/workspace/models/Qwen/Qwen3-0.6B/",
+                inference_framework="sglang",
                 timeout=7200,
                 resources=ResourceConfig(
-                    cpu="8",
-                    memory="64Gi",
+                    cpu="4",
+                    memory="32Gi",
                     gpu=1,
                     gpu_card="L40S"
-                )
+                ),
+                name=f"updated-inference-{int(time.time())}",
+                environment_variables={
+                    "MODEL_PATH": "/workspace/models/Qwen/Qwen3-0.6B/",
+                }
             )
         )
         print(f"✓ Inference job updated successfully!")

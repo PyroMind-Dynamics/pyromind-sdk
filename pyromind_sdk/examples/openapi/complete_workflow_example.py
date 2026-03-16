@@ -25,7 +25,7 @@ from pyromind_sdk.client.models import (
     JupyterRequest,
     TrainingTaskCreateRequest,
     TrainingFramework,
-    InferenceJobCreateRequest,
+    InferenceJobRequest,
 )
 
 
@@ -118,7 +118,7 @@ def complete_workflow():
         print("\n[Step 4] Creating inference job...")
         try:
             inference_job = client.inference.create(
-                InferenceJobCreateRequest(
+                InferenceJobRequest(
                     name="ml-inference-job",
                     model_path="/models/trained-model",
                     image="pytorch/pytorch:latest",

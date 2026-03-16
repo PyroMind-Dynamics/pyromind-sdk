@@ -234,7 +234,7 @@ class PyroMindClient:
             if response.content:
                 return response.json()
             return {}
-            
+
         except requests.exceptions.RequestException as e:
             raise PyroMindAPIError(
                 message=f"Request failed: {str(e)}",

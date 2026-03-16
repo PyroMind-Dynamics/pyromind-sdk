@@ -12,25 +12,21 @@ Environment variables required:
 These tests will create, manage, and delete actual inference jobs.
 """
 
-import os
-import pytest
-import time
-from typing import Optional, Set
 import atexit
+import os
+# Import the example functions
+import sys
+import time
+from pathlib import Path
+from typing import Optional, Set
+
+import pytest
 
 from pyromind_sdk import PyroMindAPIClient, PyroMindAPIError
 from pyromind_sdk.client.models import (
-    InferenceJobCreateRequest,
-    InferenceJobUpdateRequest,
-    InferenceJobResponse,
+    InferenceJobRequest,
     ResourceConfig,
 )
-
-# Import the example functions
-import sys
-from pathlib import Path
-
-from pyromind_sdk.examples.openapi.jupyter_instance_example import pause_jupyter_example
 
 # From pyromind_sdk/tests/pytest/ to pyromind_sdk/examples/openapi/
 EXAMPLES_DIR = Path(__file__).parent.parent.parent / "examples" / "openapi"
@@ -184,54 +180,50 @@ def _cleanup_all_jobs(client: Optional[PyroMindAPIClient]):
     print(f"[FINAL_CLEANUP] Cleanup completed")
 
 
-def wait_for_job_status(
+def wait_for_instance_status(
         client: PyroMindAPIClient,
-        job_id: str,
+        instance_id: str,
         target_status: str,
-        timeout: int = 300,
+        timeout: int = 1800,
         check_interval: int = 3
 ) -> bool:
     """
-    Wait for an inference job to reach a specific status.
+    Wait for an instance to reach a specific status.
 
     Args:
         client: PyroMindAPIClient instance
-        job_id: ID of the job to check
+        instance_id: ID of the instance to check
         target_status: Target status to wait for (e.g., 'running', 'stopped')
         timeout: Maximum time to wait in seconds
         check_interval: Time between status checks in seconds
 
     Returns:
-        True if the job reached the target status, False if timeout
+        True if the instance reached the target status, False if timeout
     """
     waited = 0
     while waited < timeout:
         try:
-            job = get_inference_job_example(job_id)
-            if not job:
-                return False
-            
-            current_status = job.status.lower()
-            print(f"[WAIT] Job {job_id} status: {current_status} (target: {target_status}, waited {waited}s)")
+            instance = get_inference_job_example(instance_id)
+            current_status = instance.status.lower()
+            print(f"[WAIT] Instance {instance_id} status: {current_status} (target: {target_status}, waited {waited}s)")
 
             if current_status == 'failed':
                 return False
 
             if current_status == target_status.lower():
-                print(f"[WAIT] Job {job_id} reached target status: {target_status}")
+                print(f"[WAIT] Instance {instance_id} reached target status: {target_status}")
                 return True
 
-            if current_status not in ['pending', 'creating', 'starting']:
-                # If job is in a stable but not target state, return False
+            if current_status != 'pending':
                 return False
 
         except Exception as e:
-            print(f"[WAIT] Error checking job status: {type(e).__name__}: {str(e)}")
+            print(f"[WAIT] Error checking instance status: {type(e).__name__}: {str(e)}")
 
         time.sleep(check_interval)
         waited += check_interval
 
-    print(f"[WAIT] Timeout waiting for job {job_id} to reach status {target_status} after {timeout}s")
+    print(f"[WAIT] Timeout waiting for instance {instance_id} to reach status {target_status} after {timeout}s")
     return False
 
 
@@ -273,7 +265,7 @@ def test_job_id(client, job_tracker):
         # Create a test job
         print(f"[TEST] Creating test job for fixture...")
         job_id = client.inference.create(
-            InferenceJobCreateRequest(
+            InferenceJobRequest(
                 name=f"test-inference-{int(time.time())}",
                 model_path="/workspace/models/Qwen/Qwen3-0.6B/",
                 inference_framework="sglang",
@@ -302,6 +294,11 @@ def test_job_id(client, job_tracker):
         if job_id:
             print(f"[CLEANUP] Starting cleanup for test job: {job_id}")
             try:
+                if wait_for_instance_status(client, job_id, 'running'):
+                    print(f"[CLEANUP] Job {job_id} is running, pausing...")
+                    client.inference.pause(job_id)
+                if wait_for_instance_status(client, job_id, 'stopped'):
+                    print(f"[CLEANUP] Job {job_id} is stopped")
                 client.inference.delete(job_id)
                 print(f"[CLEANUP] Successfully deleted job {job_id}")
                 # Remove from tracker to avoid duplicate cleanup
@@ -360,20 +357,20 @@ class TestCreateInferenceJob:
     def test_create_inference_job(self, client, job_tracker):
         """Test creating an inference job"""
         print(f"[TEST] Creating inference job...")
-        
+        name = f"test-inference-{int(time.time())}"
         try:
             job_id = client.inference.create(
-                InferenceJobCreateRequest(
+                InferenceJobRequest(
                     model_path="/workspace/models/Qwen/Qwen3-0.6B/",
                     inference_framework="sglang",
-                    timeout=3600,
+                    timeout=7200,
                     resources=ResourceConfig(
                         cpu="4",
                         memory="32Gi",
                         gpu=1,
                         gpu_card="L40S"
                     ),
-                    name=f"test-inference-{int(time.time())}",
+                    name=name,
                     environment_variables={
                         "MODEL_PATH": "/workspace/models/Qwen/Qwen3-0.6B/",
                     }
@@ -395,40 +392,12 @@ class TestCreateInferenceJob:
         assert job_id is not None, "Job creation returned None"
         assert isinstance(job_id, str), f"Expected string job_id, got {type(job_id).__name__}"
         assert len(job_id) > 0, "Job ID is empty"
+        if wait_for_instance_status(client, job_id, 'running'):
+            print(f"[TEST] Job {job_id} is running")
+        else:
+            raise PyroMindAPIError(f"inference {name} create failed")
         
         print(f"[TEST] Job verification passed: id={job_id}")
-        
-        # Clean up - delete the job
-        print(f"[CLEANUP] Starting cleanup for job: {job_id}")
-        try:
-            # Wait a bit for job to be ready
-            print(f"[CLEANUP] Waiting 5 seconds for job to be ready...")
-            time.sleep(5)
-            
-            # Check job status and pause if running
-            try:
-                job = client.inference.get_job(job_id)
-                if job.status.lower() == "running":
-                    print(f"[CLEANUP] Job is in Running status, pausing first...")
-                    client.inference.pause(job_id)
-                    # Wait for pause to complete
-                    time.sleep(5)
-            except Exception as e:
-                print(f"[CLEANUP] Warning: Could not check/pause job status: {type(e).__name__}: {str(e)}")
-            
-            print(f"[CLEANUP] Attempting to delete job {job_id}...")
-            client.inference.delete(job_id)
-            print(f"[CLEANUP] Successfully deleted job {job_id}")
-            # Remove from tracker to avoid duplicate cleanup
-            job_tracker.discard(job_id)
-        except PyroMindAPIError as e:
-            print(f"[WARNING] Failed to delete job {job_id}: {e.message} (status_code: {e.status_code})")
-            if e.response:
-                print(f"[WARNING] Error response: {e.response}")
-            # Keep in tracker for final cleanup if deletion failed
-        except Exception as e:
-            print(f"[WARNING] Unexpected error during cleanup: {type(e).__name__}: {str(e)}")
-            # Keep in tracker for final cleanup if deletion failed
     
     def test_create_inference_job_example_function(self, job_tracker):
         """Test the create_inference_job_example function"""
@@ -440,6 +409,10 @@ class TestCreateInferenceJob:
             assert len(job_id) > 0
             # Register job for final cleanup
             job_tracker.add(job_id)
+            if wait_for_instance_status(client, job_id, 'running'):
+                print(f"[TEST] Job {job_id} is running")
+            else:
+                raise PyroMindAPIError(f"inference {job_id} create failed")
 
 
 class TestGetInferenceJob:
@@ -503,63 +476,7 @@ class TestGetInferenceJob:
 class TestUpdateInferenceJob:
     """Test cases for updating inference jobs"""
     
-    def test_update_inference_job(self, client, test_job_id):
-        """Test updating an inference job"""
-        print(f"[TEST] Updating inference job: {test_job_id}")
-        
-        # Wait for job to be in a modifiable state (Running or Stopped)
-        print(f"[TEST] Waiting for job to be in modifiable state...")
-        max_wait = 60
-        check_interval = 3
-        waited = 0
-        job = None
-        while waited < max_wait:
-            try:
-                job = client.inference.get_job(test_job_id)
-                current_status = job.status.lower()
-                print(f"[TEST] Job status: {current_status} (waited {waited}s)")
-                if current_status in ['running', 'stopped']:
-                    break
-            except Exception as e:
-                print(f"[TEST] Error checking job status: {type(e).__name__}: {str(e)}")
-            time.sleep(check_interval)
-            waited += check_interval
-        
-        if waited >= max_wait:
-            print(f"[TEST] Warning: Job did not reach modifiable state after {max_wait}s")
-        
-        try:
-            # Update the job with new configuration
-            updated_job = client.inference.update(
-                job_id=test_job_id,
-                request=InferenceJobUpdateRequest(
-                    name=f"updated-test-{int(time.time())}",
-                    timeout=7200,
-                    resources=ResourceConfig(
-                        cpu="8",
-                        memory="64Gi",
-                        gpu=1,
-                        gpu_card="L40S"
-                    )
-                )
-            )
-            print(f"[TEST] Job updated successfully: id={updated_job.id}, name={updated_job.name}")
-        except PyroMindAPIError as e:
-            print(f"[ERROR] Failed to update job: {e.message} (status_code: {e.status_code})")
-            if e.response:
-                print(f"[ERROR] Error response: {e.response}")
-            raise
-        except Exception as e:
-            print(f"[ERROR] Unexpected error updating job: {type(e).__name__}: {str(e)}")
-            raise
-
-        # Verify job was updated
-        assert updated_job is not None, f"Updated job is None for ID: {test_job_id}"
-        assert updated_job.id == test_job_id, f"Job ID mismatch. Expected: {test_job_id}, got: {updated_job.id}"
-        assert updated_job.name is not None, f"Updated job name is None for ID: {test_job_id}"
-        # Note: API may not update all fields, so we only verify what was sent
-    
-    def test_update_inference_job_partial(self, client, test_job_id):
+    def test_update_inference_job_partial(self, client, test_job_id, job_tracker):
         """Test partially updating an inference job (only name)"""
         print(f"[TEST] Partially updating inference job: {test_job_id}")
         
@@ -587,15 +504,20 @@ class TestUpdateInferenceJob:
             # Update only the name
             updated_job = client.inference.update(
                 job_id=test_job_id,
-                request=InferenceJobUpdateRequest(
-                    name=f"updated-test-{int(time.time())}",
+                request= InferenceJobRequest(
+                    model_path="/workspace/models/Qwen/Qwen3-0.6B/",
+                    inference_framework="sglang",
                     timeout=7200,
                     resources=ResourceConfig(
-                        cpu="8",
+                        cpu="4",
                         memory="64Gi",
                         gpu=1,
                         gpu_card="L40S"
-                    )
+                    ),
+                    name=f"updated-inference-{int(time.time())}",
+                    environment_variables={
+                        "MODEL_PATH": "/workspace/models/Qwen/Qwen3-0.6B/",
+                    }
                 )
             )
             print(f"[TEST] Job updated successfully: id={updated_job.id}, name={updated_job.name}")
@@ -607,7 +529,7 @@ class TestUpdateInferenceJob:
         except Exception as e:
             print(f"[ERROR] Unexpected error updating job: {type(e).__name__}: {str(e)}")
             raise
-        
+        job_tracker.add_job(updated_job)
         # Verify job was updated
         assert updated_job is not None, f"Updated job is None for ID: {test_job_id}"
         assert updated_job.id == test_job_id, f"Job ID mismatch. Expected: {test_job_id}, got: {updated_job.id}"
@@ -636,7 +558,7 @@ class TestDeleteInferenceJob:
         """Test deleting an inference job"""
         # Create a temporary job to delete
         job_id = client.inference.create(
-            InferenceJobCreateRequest(
+            InferenceJobRequest(
                 model_path="/workspace/models/Qwen/Qwen3-0.6B/",
                 inference_framework="sglang",
                 timeout=3600,
@@ -761,7 +683,7 @@ class TestCompleteWorkflow:
         try:
             # Step 1: Create job
             job_id = client.inference.create(
-                InferenceJobCreateRequest(
+                InferenceJobRequest(
                     model_path="/workspace/models/Qwen/Qwen3-0.6B/",
                     inference_framework="sglang",
                     timeout=3600,
