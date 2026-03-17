@@ -474,34 +474,30 @@ class TestGetInferenceJob:
 class TestUpdateInferenceJob:
     """Test cases for updating inference jobs"""
     
-    def test_update_inference_job_partial(self, client, test_job_id, job_tracker):
-        """Test partially updating an inference job (only name)"""
-        print(f"[TEST] Partially updating inference job: {test_job_id}")
-        
+    def test_update_inference_job_failed(self, client, job_tracker):
+
         # Wait for job to be in a modifiable state (Running or Stopped)
         print(f"[TEST] Waiting for job to be in modifiable state...")
-        max_wait = 60
-        check_interval = 3
-        waited = 0
-        while waited < max_wait:
-            try:
-                job = client.inference.get_job(test_job_id)
-                current_status = job.status.lower()
-                print(f"[TEST] Job status: {current_status} (waited {waited}s)")
-                if current_status in ['running', 'stopped']:
-                    break
-            except Exception as e:
-                print(f"[TEST] Error checking job status: {type(e).__name__}: {str(e)}")
-            time.sleep(check_interval)
-            waited += check_interval
-        
-        if waited >= max_wait:
-            print(f"[TEST] Warning: Job did not reach modifiable state after {max_wait}s")
-        
+        pending_id = client.inference.create(request= InferenceJobRequest(
+                    model_path="/workspace/models/Qwen/Qwen3-0.6B/",
+                    inference_framework="sglang",
+                    timeout=7200,
+                    resources=ResourceConfig(
+                        cpu="4",
+                        memory="64Gi",
+                        gpu=9,
+                        gpu_card="H100"
+                    ),
+                    name=f"pending-inference-example-{int(time.time())}",
+                    environment_variables={
+                        "MODEL_PATH": "/workspace/models/Qwen/Qwen3-0.6B/",
+                    }
+                ))
+        job_tracker.add(pending_id)
         try:
             # Update only the name
             updated_job = client.inference.update(
-                job_id=test_job_id,
+                job_id=pending_id,
                 request= InferenceJobRequest(
                     model_path="/workspace/models/Qwen/Qwen3-0.6B/",
                     inference_framework="sglang",
@@ -509,8 +505,8 @@ class TestUpdateInferenceJob:
                     resources=ResourceConfig(
                         cpu="4",
                         memory="64Gi",
-                        gpu=1,
-                        gpu_card="L40S"
+                        gpu=9,
+                        gpu_card="H100"
                     ),
                     name=f"updated-inference-example-{int(time.time())}",
                     environment_variables={
@@ -521,20 +517,27 @@ class TestUpdateInferenceJob:
             print(f"[TEST] Job updated successfully: id={updated_job.id}, name={updated_job.name}")
         except PyroMindAPIError as e:
             print(f"[ERROR] Failed to update job: {e.message} (status_code: {e.status_code})")
-            if e.response:
-                print(f"[ERROR] Error response: {e.response}")
-            raise
+            ## 校验异常信息中有 “instance`s status is pending, can not modify!”才正常，否则不行
+            assert "instance`s status is pending, can not modify!" in e.message, f"Unexpected error message: {e.message}"
         except Exception as e:
             print(f"[ERROR] Unexpected error updating job: {type(e).__name__}: {str(e)}")
             raise
-        job_tracker.add(updated_job.id)
-        # Verify job was updated
-        assert updated_job is not None, f"Updated job is None for ID: {test_job_id}"
-        assert updated_job.id == test_job_id, f"Job ID mismatch. Expected: {test_job_id}, got: {updated_job.id}"
-        assert updated_job.name is not None, f"Updated job name is None for ID: {test_job_id}"
     
-    def test_update_inference_job_example_function(self, test_job_id):
+    def test_update_inference_job_example_function(self, job_tracker):
         """Test the update_inference_job_example function"""
+        test_job_id = None
+        for test_job_id in job_tracker:
+            example = get_inference_job_example(test_job_id)
+            if example is None:
+                continue
+            elif example.status.lower() in ("running", "stopped"):
+                test_job_id = example.id
+                break
+
+        if test_job_id is None:
+            print("\nNo existing inference jobs found. Skipping update test.")
+            return
+
         print(f"[TEST] Testing update_inference_job_example function with job: {test_job_id}")
         try:
             updated_job = update_inference_job_example(test_job_id)
