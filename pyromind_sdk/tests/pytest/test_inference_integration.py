@@ -301,8 +301,6 @@ def test_job_id(client, job_tracker):
                     print(f"[CLEANUP] Job {job_id} is stopped")
                 client.inference.delete(job_id)
                 print(f"[CLEANUP] Successfully deleted job {job_id}")
-                # Remove from tracker to avoid duplicate cleanup
-                job_tracker.discard(job_id)
             except PyroMindAPIError as e:
                 # Log but don't fail the test if cleanup fails
                 print(f"[WARNING] Failed to delete test job {job_id}: {e.message} (status_code: {e.status_code})")
@@ -399,7 +397,7 @@ class TestCreateInferenceJob:
         
         print(f"[TEST] Job verification passed: id={job_id}")
     
-    def test_create_inference_job_example_function(self, job_tracker):
+    def test_create_inference_job_example_function(self, client, job_tracker):
         """Test the create_inference_job_example function"""
         job_id = create_inference_job_example()
         
@@ -514,7 +512,7 @@ class TestUpdateInferenceJob:
                         gpu=1,
                         gpu_card="L40S"
                     ),
-                    name=f"updated-inference-{int(time.time())}",
+                    name=f"updated-inference-example-{int(time.time())}",
                     environment_variables={
                         "MODEL_PATH": "/workspace/models/Qwen/Qwen3-0.6B/",
                     }
@@ -529,7 +527,7 @@ class TestUpdateInferenceJob:
         except Exception as e:
             print(f"[ERROR] Unexpected error updating job: {type(e).__name__}: {str(e)}")
             raise
-        job_tracker.add_job(updated_job)
+        job_tracker.add(updated_job.id)
         # Verify job was updated
         assert updated_job is not None, f"Updated job is None for ID: {test_job_id}"
         assert updated_job.id == test_job_id, f"Job ID mismatch. Expected: {test_job_id}, got: {updated_job.id}"
@@ -595,8 +593,6 @@ class TestDeleteInferenceJob:
         # Delete the job
         try:
             client.inference.delete(job_id)
-            # Remove from tracker to avoid duplicate cleanup
-            job_tracker.discard(job_id)
         except PyroMindAPIError as e:
             # If delete fails, re-raise
             raise
@@ -647,8 +643,6 @@ class TestDeleteInferenceJob:
         # Delete the job
         try:
             delete_inference_job_example(job_id)
-            # Remove from tracker to avoid duplicate cleanup
-            job_tracker.discard(job_id)
         except Exception as e:
             # If delete fails, re-raise
             raise
@@ -726,8 +720,6 @@ class TestCompleteWorkflow:
                 print(f"[TEST] Warning: Could not check/pause job status: {type(e).__name__}: {str(e)}")
             
             client.inference.delete(job_id)
-            # Remove from tracker to avoid duplicate cleanup
-            job_tracker.discard(job_id)
             
             # Verify deletion - wait a bit and check
             # Note: Deletion may be asynchronous
