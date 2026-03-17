@@ -200,6 +200,8 @@ def wait_for_instance_status(
                 return False
 
         except Exception as e:
+            time.sleep(check_interval)
+            waited += check_interval
             print(f"[WAIT] Error checking instance status: {type(e).__name__}: {str(e)}")
 
         time.sleep(check_interval)
