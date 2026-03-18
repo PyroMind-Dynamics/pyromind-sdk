@@ -13,7 +13,7 @@ from urllib3.util.retry import Retry
 
 
 # Constants
-DEFAULT_API_BASE_URL = "https://pyromind.ai/api/v1"
+DEFAULT_API_BASE_URL = "https://api.pyromind.ai/api/v1"
 DEFAULT_TIMEOUT = 30
 DEFAULT_MAX_RETRIES = 3
 ENV_API_KEY = "PYROMIND_API_KEY"
@@ -44,7 +44,7 @@ class PyroMindClient:
                 provided, will raise ValueError.
         base_url: Base URL for the API. If not provided, will try to read from
                  PYROMIND_BASE_URL environment variable. If neither is provided,
-                 defaults to https://pyromind.ai/api/v1
+                 defaults to https://api.pyromind.ai/api/v1
         timeout: Request timeout in seconds (default: 30)
         max_retries: Maximum number of retries for failed requests (default: 3)
 
