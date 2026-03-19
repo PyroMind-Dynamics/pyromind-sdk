@@ -198,6 +198,83 @@ print(sandbox.id, sandbox.status, vnc.get("web_vnc_url"))
 client.close()
 ```
 
+### ResourceConfig field reference
+
+`ResourceConfig` is used by all three resource types (Jupyter, Inference, Sandbox):
+
+| Field | Type | Required | Description | Example |
+|-------|------|----------|-------------|---------|
+| `cpu` | int \| str | Yes | Number of CPU cores | `2`, `"4"` |
+| `memory` | int \| str | Yes | Memory in Gi — passing an int auto-appends `"Gi"` | `8` → `"8Gi"`, `"16Gi"` |
+| `gpu` | int \| str | Inference only | Number of GPUs | `1`, `"2"` |
+| `gpu_card` | str | Inference only | GPU card model | `"L40S"`, `"H100"` |
+
+```python
+# Jupyter / Sandbox — CPU + memory only
+ResourceConfig(cpu=2, memory=8)          # memory stored as "8Gi"
+
+# Inference — CPU + memory + GPU required
+ResourceConfig(cpu=4, memory=16, gpu=1, gpu_card="L40S")
+```
+
+### ⚠️ Instance Management Best Practices
+
+#### 1. Pause before delete
+
+Deleting a Running instance returns `400 Bad Request`. Always pause first:
+
+```python
+import time
+
+# Step 1: pause the instance
+client.instance.pause("jp-xxx")
+
+# Step 2: wait for the pause to complete
+time.sleep(10)
+
+# Step 3: delete
+client.instance.delete("jp-xxx")
+```
+
+#### 2. Bulk cleanup (keep a specific instance)
+
+`client.instance.list()` returns `List[JupyterResponse]` — access fields via attributes (`.id`, `.name`, `.status`), not dict keys.
+
+```python
+import time
+
+instances = client.instance.list()  # List[JupyterResponse]
+
+keep_id = "jp-0b8e936dc9d7"
+to_delete = [inst.id for inst in instances if inst.id != keep_id]
+
+for inst_id in to_delete:
+    client.instance.pause(inst_id)
+
+time.sleep(10)
+
+for inst_id in to_delete:
+    client.instance.delete(inst_id)
+```
+
+#### 3. InstanceClient methods
+
+```python
+instances = client.instance.list()           # List[JupyterResponse]
+detail    = client.instance.get_instance("jp-xxx")  # JupyterResponse
+client.instance.pause("jp-xxx")             # Running → Paused
+client.instance.resume("jp-xxx")            # Paused  → Running
+client.instance.delete("jp-xxx")            # must be Paused first
+```
+
+#### 4. Status check
+
+```python
+instances = client.instance.list()  # List[JupyterResponse]
+for inst in instances:
+    print(f"{inst.id}: {inst.status}")  # Running, Paused, Stopped, etc.
+```
+
 ## YAML node format
 
 - **parameters**: List of inputs/outputs. Use `type: "input"` or `type: "output"`, `required_type: "required"` or `"optional"` for inputs, `dtype` (e.g. STRING, INT, MODEL).
@@ -236,3 +313,4 @@ Rules: In standard format, only **connected** inputs appear in the node `inputs`
 ## More detail
 
 - Imports and format summary: [reference.md](reference.md)
+
