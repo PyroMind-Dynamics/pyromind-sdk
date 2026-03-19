@@ -172,7 +172,7 @@ client = PyroMindAPIClient(api_key="YOUR_API_KEY")
 jupyter = client.instance.create(
     JupyterRequest(
         name="demo-jupyter",
-        resources=ResourceConfig(cpu=2, memory=8),
+        resources=ResourceConfig(cpu="2", memory="8Gi"),
     )
 )
 print(jupyter.id, jupyter.url, jupyter.status)
@@ -183,7 +183,7 @@ job_id = client.inference.create(
         name="demo-inference",
         model_path="/workspace/models/qwen",
         inference_framework="vllm",
-        resources=ResourceConfig(cpu=4, memory=16, gpu=1, gpu_card="L40S"),
+        resources=ResourceConfig(cpu="4", memory="16Gi", gpu="1", gpu_card="L40S"),
     )
 )
 job = client.inference.get_job(job_id)
@@ -193,7 +193,7 @@ print(job.id, job.status, job.endpoint_url)
 sandbox = client.sandboxes.create(
     SandboxRequest(
         sandbox_type=SandboxType.LINUX,  # API value: code
-        resources=ResourceConfig(cpu=2, memory=4),
+        resources=ResourceConfig(cpu="2", memory="4Gi"),
         name="demo-sandbox",
     )
 )
@@ -216,11 +216,13 @@ client.close()
 
 ```python
 # Jupyter / Sandbox — CPU + memory only
-ResourceConfig(cpu=2, memory=8)          # memory stored as "8Gi"
+ResourceConfig(cpu="2", memory="8Gi")
 
 # Inference — CPU + memory + GPU required
-ResourceConfig(cpu=4, memory=16, gpu=1, gpu_card="L40S")
+ResourceConfig(cpu="4", memory="16Gi", gpu="1", gpu_card="L40S")
 ```
+
+> The validators also accept plain integers as a shorthand: `cpu=2` → `"2"`, `memory=8` → `"8Gi"`, `gpu=1` → `"1"`.
 
 ### ⚠️ Instance Management Best Practices
 
