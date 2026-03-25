@@ -4,11 +4,14 @@ Python node class to YAML configuration converter
 Converts Python class-defined nodes to YAML configuration files.
 """
 
+import logging
 import yaml
 import ast
 import inspect
 from typing import Dict, Any, List, Tuple, Optional
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 # Base class to name mapping (reverse mapping)
@@ -76,6 +79,9 @@ def _infer_dtype_from_expr(
     Strict mode: when we cannot determine a supported dtype, we raise instead of
     silently defaulting to STRING.
     """
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set, ast.Dict)):
+        raise ValueError("List/dict/sequence outputs are not supported; expected primitive STRING/INT/FLOAT/BOOLEAN")
+
     if isinstance(node, ast.Constant):
         if isinstance(node.value, bool):
             return "BOOLEAN"
@@ -434,7 +440,7 @@ def convert_node_class_to_yaml(node_class: type, output_path: Optional[str] = No
             if inputs_config:
                 config["inputs"] = inputs_config
         except Exception as e:
-            print(f"Warning: Could not parse BASE_INPUT_TYPES for {node_class.__name__}: {e}")
+            logger.warning(f"Warning: Could not parse BASE_INPUT_TYPES for {node_class.__name__}: {e}")
     
     # Customer inputs
     if hasattr(node_class, "CUSTOMER_INPUTS"):
@@ -443,7 +449,7 @@ def convert_node_class_to_yaml(node_class: type, output_path: Optional[str] = No
             if customer_inputs:
                 config["customer_inputs"] = list(customer_inputs)
         except Exception as e:
-            print(f"Warning: Could not parse CUSTOMER_INPUTS for {node_class.__name__}: {e}")
+            logger.warning(f"Warning: Could not parse CUSTOMER_INPUTS for {node_class.__name__}: {e}")
     
     # If output path is specified, save to file
     if output_path:
@@ -466,7 +472,7 @@ def save_yaml_config(config: Dict[str, Any], output_path: str):
     with open(output_path, "w", encoding="utf-8") as f:
         yaml.dump(config, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
     
-    print(f"✓ YAML configuration saved to: {output_path}")
+    logger.info(f"✓ YAML configuration saved to: {output_path}")
 
 
 def convert_module_to_yaml(module, output_dir: str = "nodes"):
@@ -488,7 +494,7 @@ def convert_module_to_yaml(module, output_dir: str = "nodes"):
             name.endswith("Node")):
             node_classes.append((name, obj))
     
-    print(f"Found {len(node_classes)} node classes")
+    logger.info(f"Found {len(node_classes)} node classes")
     
     for class_name, node_class in node_classes:
         try:
@@ -496,7 +502,7 @@ def convert_module_to_yaml(module, output_dir: str = "nodes"):
             output_path = output_dir / f"{class_name.lower()}.yaml"
             save_yaml_config(config, output_path)
         except Exception as e:
-            print(f"Error converting {class_name}: {e}")
+            logger.error(f"Error converting {class_name}: {e}")
 
 
 def yaml_to_node_class(yaml_path: str) -> type:
@@ -667,7 +673,7 @@ def yaml_to_python_code(yaml_path: str, output_path: Optional[str] = None) -> st
     if output_path:
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(code)
-        print(f"✓ Python code saved to: {output_path}")
+        logger.info(f"✓ Python code saved to: {output_path}")
     
     return code
 
@@ -686,16 +692,16 @@ if __name__ == "__main__":
         CtrlWorldTrainingNode,
     )
     
-    print("=" * 60)
-    print("Python to YAML Conversion Example")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("Python to YAML Conversion Example")
+    logger.info("=" * 60)
     
     # Convert single node
-    print("\n1. Convert TrainingConfigNodeV2:")
+    logger.info("\n1. Convert TrainingConfigNodeV2:")
     config = convert_node_class_to_yaml(TrainingConfigNodeV2)
-    print(f"   Node name: {config['name']}")
-    print(f"   Base class: {config.get('base_class')}")
-    print(f"   Input field count: {len(config.get('inputs', {}).get('required', {}))}")
+    logger.info(f"   Node name: {config['name']}")
+    logger.info(f"   Base class: {config.get('base_class')}")
+    logger.info(f"   Input field count: {len(config.get('inputs', {}).get('required', {}))}")
     
     # Save to file
     output_dir = Path(__file__).parent / "converted_from_python"
@@ -704,25 +710,25 @@ if __name__ == "__main__":
     convert_node_class_to_yaml(LoggingConfigNode, output_dir / "logging_config_node.yaml")
     convert_node_class_to_yaml(CtrlWorldTrainingNode, output_dir / "ctrl_world_training_node.yaml")
     
-    print("\n2. YAML to Python Class Object Conversion Example:")
+    logger.info("\n2. YAML to Python Class Object Conversion Example:")
     yaml_path = Path(__file__).parent.parent / "tests" / "nodes" / "hello_world_node.yaml"
     if yaml_path.exists():
         # Directly convert to class object (recommended method)
         node_class = yaml_to_node_class(str(yaml_path))
-        print(f"   Node class: {node_class.__name__}")
-        print(f"   Base classes: {[b.__name__ for b in node_class.__bases__]}")
-        print(f"   Description: {node_class.DESCRIPTION}")
-        print(f"   Input fields: {list(node_class.BASE_INPUT_TYPES()['required'].keys())[:3]}...")
+        logger.info(f"   Node class: {node_class.__name__}")
+        logger.info(f"   Base classes: {[b.__name__ for b in node_class.__bases__]}")
+        logger.info(f"   Description: {node_class.DESCRIPTION}")
+        logger.info(f"   Input fields: {list(node_class.BASE_INPUT_TYPES()['required'].keys())[:3]}...")
         
         # If code file generation is needed, can use yaml_to_python_code
-        print("\n3. YAML to Python Code File Conversion Example:")
+        logger.info("\n3. YAML to Python Code File Conversion Example:")
         python_code = yaml_to_python_code(str(yaml_path))
-        print("\nGenerated Python code preview:")
-        print("-" * 60)
-        print("\n".join(python_code.split("\n")[:20]) + "...")
-        print("-" * 60)
+        logger.info("\nGenerated Python code preview:")
+        logger.info("-" * 60)
+        logger.info("\n".join(python_code.split("\n")[:20]) + "...")
+        logger.info("-" * 60)
     
-    print("\n" + "=" * 60)
-    print("Conversion complete!")
-    print("=" * 60)
+    logger.info("\n" + "=" * 60)
+    logger.info("Conversion complete!")
+    logger.info("=" * 60)
 

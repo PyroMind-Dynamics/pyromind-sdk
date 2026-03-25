@@ -100,12 +100,19 @@ def test_python_function_to_yaml_fallback_to_string_for_unknown_type(tmp_path: P
 
 
 def test_python_function_to_yaml_list_output_is_not_supported(tmp_path: Path):
-    """calculator_unkown.py returns a list for result_output2; generation should fail."""
-    python_path = EXAMPLES_DIR / "utils" / "calculator_unkown.py"
+    """List/dict outputs are not supported; generation should fail."""
+    src = tmp_path / "list_output.py"
+    src.write_text(
+        "def f(x: float) -> dict:\n"
+        "    out = ['a', 'b']\n"
+        "    return {'out': out}\n",
+        encoding="utf-8",
+    )
 
     with pytest.raises(ValueError, match=r"List/dict/sequence outputs are not supported"):
         python_function_to_yaml(
-            python_file_path=str(python_path),
-            function_name="calculate",
-            node_name="PythonCalculatorUnknownNode",
+            python_file_path=str(src),
+            function_name="f",
+            node_name="ListOutputNode",
         )
+
