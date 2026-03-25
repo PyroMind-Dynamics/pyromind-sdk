@@ -5,6 +5,7 @@ Converts Python class-defined nodes to YAML configuration files.
 """
 
 import yaml
+import ast
 import inspect
 from typing import Dict, Any, List, Tuple, Optional
 from pathlib import Path
@@ -19,6 +20,278 @@ CLASS_TO_NAME_MAP = {
     "DaemonPodExecutionNode": "DaemonPodExecutionNode",
     "EndpointNode": "EndpointNode",
 }
+
+
+
+ALLOWED_YAML_DTYPES = {"STRING", "INT", "FLOAT", "BOOLEAN"}
+ANNOTATION_TO_DTYPE = {
+    "str": "STRING",
+    "int": "INT",
+    "float": "FLOAT",
+    "bool": "BOOLEAN",
+}
+
+
+def _get_name_from_annotation(annotation: Optional[ast.AST]) -> Optional[str]:
+    """Extract a readable type name from an annotation AST node."""
+    if annotation is None:
+        return None
+    if isinstance(annotation, ast.Name):
+        return annotation.id
+    if isinstance(annotation, ast.Attribute):
+        return annotation.attr
+    if isinstance(annotation, ast.Subscript):
+        return _get_name_from_annotation(annotation.value)
+    return None
+
+
+def _annotation_to_dtype(annotation: Optional[ast.AST]) -> str:
+    """Convert a Python type annotation AST node to YAML dtype."""
+    ann_name = _get_name_from_annotation(annotation)
+    if ann_name is None:
+        return "STRING"
+    return ANNOTATION_TO_DTYPE.get(ann_name, "STRING")
+
+
+def _is_float_expr(node: ast.AST, input_types: Dict[str, str]) -> bool:
+    """Best-effort check whether expression should be treated as FLOAT."""
+    if isinstance(node, ast.Constant):
+        return isinstance(node.value, float)
+    if isinstance(node, ast.Name):
+        return input_types.get(node.id) == "FLOAT"
+    if isinstance(node, ast.BinOp):
+        return _is_float_expr(node.left, input_types) or _is_float_expr(node.right, input_types)
+    if isinstance(node, ast.UnaryOp):
+        return _is_float_expr(node.operand, input_types)
+    return False
+
+
+def _infer_dtype_from_expr(
+    node: ast.AST,
+    input_types: Dict[str, str],
+    local_types: Optional[Dict[str, str]] = None,
+) -> str:
+    """Infer YAML dtype from an output expression in return dict.
+
+    Strict mode: when we cannot determine a supported dtype, we raise instead of
+    silently defaulting to STRING.
+    """
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, bool):
+            return "BOOLEAN"
+        if isinstance(node.value, int) and not isinstance(node.value, bool):
+            return "INT"
+        if isinstance(node.value, float):
+            return "FLOAT"
+        if isinstance(node.value, str):
+            return "STRING"
+        if node.value is None:
+            raise ValueError("Cannot infer dtype from None constant")
+        raise ValueError(f"Unsupported constant type: {type(node.value).__name__}")
+
+    if isinstance(node, ast.Name):
+        if local_types and node.id in local_types:
+            return local_types[node.id]
+        if node.id in input_types:
+            return input_types[node.id]
+        raise ValueError(f"Unknown name '{node.id}' in dtype inference")
+
+    if isinstance(node, ast.BinOp):
+        if isinstance(node.op, ast.Div):
+            return "FLOAT"
+        if _is_float_expr(node, input_types):
+            return "FLOAT"
+        return "INT"
+
+    if isinstance(node, ast.UnaryOp):
+        if isinstance(node.op, ast.Not):
+            return "BOOLEAN"
+        return _infer_dtype_from_expr(node.operand, input_types, local_types)
+
+    if isinstance(node, ast.BoolOp):
+        return "BOOLEAN"
+
+    if isinstance(node, ast.Compare):
+        return "BOOLEAN"
+
+    if isinstance(node, ast.Call):
+        func_name = ""
+        if isinstance(node.func, ast.Name):
+            func_name = node.func.id
+        elif isinstance(node.func, ast.Attribute):
+            func_name = node.func.attr
+        call_mapping = {
+            "int": "INT",
+            "float": "FLOAT",
+            "str": "STRING",
+            "bool": "BOOLEAN",
+        }
+        if func_name not in call_mapping:
+            raise ValueError(f"Unsupported cast/function in dtype inference: {func_name}")
+        return call_mapping[func_name]
+
+    if isinstance(node, ast.JoinedStr):
+        # f"..." is always a string.
+        return "STRING"
+
+    raise ValueError(f"Unsupported expression for dtype inference: {type(node).__name__}")
+
+
+def _parse_function_signature(function_node: ast.FunctionDef) -> List[Dict[str, Any]]:
+    """Build input parameter configs from function signature."""
+    parameters: List[Dict[str, Any]] = []
+    for arg in function_node.args.args:
+        if arg.arg in {"self", "cls"}:
+            continue
+        input_dtype = _annotation_to_dtype(arg.annotation)
+        parameters.append(
+            {
+                "name": arg.arg,
+                "dtype": input_dtype,
+                "type": "input",
+                "required_type": "optional",
+            }
+        )
+    return parameters
+
+
+def _extract_return_dict(function_node: ast.FunctionDef) -> ast.Dict:
+    """Extract the first return dict literal from a function."""
+    for node in ast.walk(function_node):
+        if isinstance(node, ast.Return):
+            if node.value is None:
+                continue
+            if not isinstance(node.value, ast.Dict):
+                raise ValueError(
+                    f"Function '{function_node.name}' must return a dict literal, "
+                    f"got {type(node.value).__name__}"
+                )
+            return node.value
+    raise ValueError(f"Function '{function_node.name}' has no return statement")
+
+
+def _build_output_parameters(
+    return_dict_node: ast.Dict,
+    input_types: Dict[str, str],
+    local_types: Optional[Dict[str, str]] = None,
+) -> List[Dict[str, Any]]:
+    """Build output parameter configs from return dict literal."""
+    outputs: List[Dict[str, Any]] = []
+    for key_node, value_node in zip(return_dict_node.keys, return_dict_node.values):
+        if not isinstance(key_node, ast.Constant) or not isinstance(key_node.value, str):
+            raise ValueError("Return dict keys must be string literals")
+        output_name = key_node.value
+        output_dtype = _infer_dtype_from_expr(value_node, input_types, local_types)
+        if output_dtype not in ALLOWED_YAML_DTYPES:
+            output_dtype = "STRING"
+        outputs.append(
+            {
+                "name": output_name,
+                "dtype": output_dtype,
+                "type": "output",
+            }
+        )
+    return outputs
+
+
+def _infer_local_assignment_types(function_node: ast.FunctionDef, input_types: Dict[str, str]) -> Dict[str, str]:
+    """Infer local variable dtypes from simple assignments."""
+    local_types: Dict[str, str] = {}
+    for node in ast.walk(function_node):
+        if isinstance(node, ast.Assign):
+            inferred = _infer_dtype_from_expr(node.value, input_types, local_types)
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    local_types[target.id] = inferred
+    return local_types
+
+
+def python_function_to_yaml(
+    python_file_path: str,
+    function_name: str,
+    node_name: str,
+    output_path: Optional[str] = None,
+    *,
+    description: str = "",
+    category: str = "Examples",
+    display_name: Optional[str] = None,
+    base_class: str = "PodExecutionNode",
+    python_command: str = "python3",
+    python_code: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Generate YAML node config from static analysis of a Python function."""
+    file_path = Path(python_file_path)
+    if not file_path.exists():
+        raise ValueError(f"Python file does not exist: {file_path}")
+
+    source = file_path.read_text(encoding="utf-8")
+    module_ast = ast.parse(source, filename=str(file_path))
+
+    function_node: Optional[ast.FunctionDef] = None
+    for node in module_ast.body:
+        if isinstance(node, ast.FunctionDef) and node.name == function_name:
+            function_node = node
+            break
+    if function_node is None:
+        raise ValueError(f"Function '{function_name}' not found in {file_path}")
+
+    parameters = _parse_function_signature(function_node)
+    input_types = {p["name"]: p["dtype"] for p in parameters}
+    return_dict_node = _extract_return_dict(function_node)
+    local_types = _infer_local_assignment_types(function_node, input_types)
+    parameters.extend(_build_output_parameters(return_dict_node, input_types, local_types))
+
+    if not description:
+        # Prefer function docstring.
+        doc = ast.get_docstring(function_node)
+        if doc:
+            # Use only the first non-empty line to keep YAML `description` concise.
+            # Keep only the first paragraph from the function docstring (before the first blank line).
+            description = doc.strip().split("\n\n", 1)[0].strip()
+        else:
+            # Fallback: take consecutive # comment lines immediately above `def`.
+            source_lines = source.splitlines()
+            collected: List[str] = []
+            i = function_node.lineno - 2  # 0-based
+            while i >= 0:
+                line = source_lines[i].rstrip("\n\r")
+                if not line.strip():
+                    break
+                stripped = line.lstrip()
+                if stripped.startswith("#"):
+                    collected.append(stripped[1:].lstrip())
+                    i -= 1
+                    continue
+                break
+            if collected:
+                description = "\n".join(reversed(collected)).strip()
+
+    if python_code is None:
+        # Always emit absolute python_code for runtime execution.
+        python_code = str(file_path.resolve())
+    else:
+        # Normalize user-provided python_code to an absolute path.
+        code_path = Path(python_code)
+        if code_path.is_absolute():
+            python_code = str(code_path.resolve())
+        else:
+            python_code = str((file_path.parent / code_path).resolve())
+
+    config: Dict[str, Any] = {
+        "name": node_name,
+        "description": description,
+        "category": category,
+        "display_name": display_name or node_name,
+        "base_class": base_class,
+        "python_code": python_code,
+        "function_name": function_name,
+        "python_command": python_command,
+        "parameters": parameters,
+    }
+
+    if output_path:
+        save_yaml_config(config, output_path)
+    return config
 
 
 def get_base_classes(node_class: type) -> List[str]:
