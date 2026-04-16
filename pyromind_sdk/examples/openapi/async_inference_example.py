@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Inference Job Management Example
+Async Inference Job Management Example
 
-This example demonstrates how to create, manage, and interact with inference jobs.
+This example demonstrates how to create, manage, and interact with inference jobs asynchronously.
 
 The API key can be provided via:
 1. PYROMIND_API_KEY environment variable (recommended)
@@ -11,7 +11,9 @@ The API key can be provided via:
 If neither is provided, the client will raise a ValueError.
 """
 
-from pyromind_sdk import PyroMindAPIClient, PyroMindAPIError
+import asyncio
+
+from pyromind_sdk import PyroMindAsyncAPIClient, PyroMindAPIError
 from pyromind_sdk.client.models import (
     InferenceJobRequest,
     ResourceConfig,
@@ -19,15 +21,15 @@ from pyromind_sdk.client.models import (
 import time
 
 
-def create_inference_job_example():
-    """Example: Create a new inference job"""
+async def create_inference_job_example():
+    """Example: Create a new inference job (async)"""
     # API key is read from PYROMIND_API_KEY environment variable
-    client = PyroMindAPIClient()
+    client = PyroMindAsyncAPIClient()
     
     try:
         # First, get available frameworks and images
         print("Fetching available inference frameworks...")
-        frameworks = client.inference.get_framework()
+        frameworks = await client.inference.get_framework()
         if not frameworks:
             print("✗ No inference frameworks available")
             return None
@@ -39,7 +41,7 @@ def create_inference_job_example():
         
         # Get images for the selected framework
         print(f"Fetching images for framework '{selected_framework}'...")
-        images = client.inference.get_inf_image(selected_framework)
+        images = await client.inference.get_inf_image(selected_framework)
         if not images:
             print(f"✗ No images available for framework '{selected_framework}'")
             return None
@@ -50,7 +52,7 @@ def create_inference_job_example():
         print(f"  Using image: {selected_image}")
         
         print("Creating a new inference job...")
-        job_id = client.inference.create(
+        job_id = await client.inference.create(
             InferenceJobRequest(
                 model_path="/workspace/models/Qwen/Qwen3-0.6B/",
                 model_name="glm-5",
@@ -74,7 +76,7 @@ def create_inference_job_example():
         
         # Optionally get the full job details
         try:
-            job = client.inference.get_job(job_id)
+            job = await client.inference.get_job(job_id)
             print(f"  Model Path: {job.model_path}")
             print(f"  Status: {job.status}")
             if job.endpoint_url:
@@ -90,17 +92,17 @@ def create_inference_job_example():
             print(f"  Response: {e.response}")
         return None
     finally:
-        client.close()
+        await client.close()
 
 
-def list_inference_jobs_example():
-    """Example: List all inference jobs"""
+async def list_inference_jobs_example():
+    """Example: List all inference jobs (async)"""
     # API key is read from PYROMIND_API_KEY environment variable
-    client = PyroMindAPIClient()
+    client = PyroMindAsyncAPIClient()
     
     try:
         print("Listing all inference jobs...")
-        jobs = client.inference.list()
+        jobs = await client.inference.list()
         print(f"Found {len(jobs)} inference job(s):")
         
         for job in jobs:
@@ -118,17 +120,17 @@ def list_inference_jobs_example():
         print(f"✗ Failed to list inference jobs: {e.message}")
         return []
     finally:
-        client.close()
+        await client.close()
 
 
-def get_inference_job_example(job_id: str):
-    """Example: Get a specific inference job"""
+async def get_inference_job_example(job_id: str):
+    """Example: Get a specific inference job (async)"""
     # API key is read from PYROMIND_API_KEY environment variable
-    client = PyroMindAPIClient()
+    client = PyroMindAsyncAPIClient()
     
     try:
         print(f"Getting inference job {job_id}...")
-        job = client.inference.get_job(job_id)
+        job = await client.inference.get_job(job_id)
         print(f"✓ Inference job details:")
         print(f"  Name: {job.name}")
         print(f"  Status: {job.status}")
@@ -149,18 +151,18 @@ def get_inference_job_example(job_id: str):
     except Exception as e:
         print(f"  Note: Could not fetch job details: {e}")
     finally:
-        client.close()
+        await client.close()
 
 
-def update_inference_job_example(job_id: str):
-    """Example: Update an inference job"""
+async def update_inference_job_example(job_id: str):
+    """Example: Update an inference job (async)"""
     # API key is read from PYROMIND_API_KEY environment variable
-    client = PyroMindAPIClient()
+    client = PyroMindAsyncAPIClient()
     
     try:
         # First, get available frameworks and images
         print("Fetching available inference frameworks...")
-        frameworks = client.inference.get_framework()
+        frameworks = await client.inference.get_framework()
         if not frameworks:
             print("✗ No inference frameworks available")
             return None
@@ -172,7 +174,7 @@ def update_inference_job_example(job_id: str):
         
         # Get images for the selected framework
         print(f"Fetching images for framework '{selected_framework}'...")
-        images = client.inference.get_inf_image(selected_framework)
+        images = await client.inference.get_inf_image(selected_framework)
         if not images:
             print(f"✗ No images available for framework '{selected_framework}'")
             return None
@@ -183,7 +185,7 @@ def update_inference_job_example(job_id: str):
         print(f"  Using image: {selected_image}")
         
         print(f"Updating inference job {job_id}...")
-        updated_job = client.inference.update(
+        updated_job = await client.inference.update(
             job_id=job_id,
             request=InferenceJobRequest(
                 model_path="/workspace/models/Qwen/Qwen3-0.6B/",
@@ -217,33 +219,33 @@ def update_inference_job_example(job_id: str):
         print(f"✗ Failed to update inference job: {e.message}")
         return None
     finally:
-        client.close()
+        await client.close()
 
 
-def delete_inference_job_example(job_id: str):
-    """Example: Delete an inference job"""
+async def delete_inference_job_example(job_id: str):
+    """Example: Delete an inference job (async)"""
     # API key is read from PYROMIND_API_KEY environment variable
-    client = PyroMindAPIClient()
+    client = PyroMindAsyncAPIClient()
     
     try:
         print(f"Deleting inference job {job_id}...")
-        client.inference.delete(job_id)
+        await client.inference.delete(job_id)
         print(f"✓ Inference job deleted successfully!")
         
     except PyroMindAPIError as e:
         print(f"✗ Failed to delete inference job: {e.message}")
     finally:
-        client.close()
+        await client.close()
 
 
-def main():
-    """Main example function"""
+async def main():
+    """Main example function (async)"""
     print("=" * 60)
-    print("Inference Job Management Examples")
+    print("Inference Job Management Examples (Async)")
     print("=" * 60)
     
     # List existing jobs
-    jobs = list_inference_jobs_example()
+    jobs = await list_inference_jobs_example()
     
     # If we have jobs, demonstrate operations
     if jobs:
@@ -251,20 +253,20 @@ def main():
         print(f"\nUsing inference job: {job_id}")
         
         # Get job details
-        get_inference_job_example(job_id)
+        await get_inference_job_example(job_id)
     else:
         print("\nNo existing inference jobs found. Creating a new one...")
-        job_id = create_inference_job_example()
+        job_id = await create_inference_job_example()
         
         if job_id:
             # Wait a bit for job to be ready
             import time
             print("\nWaiting for inference job to be ready...")
-            time.sleep(2)
+            await asyncio.sleep(2)
             
             # Get job details
-            get_inference_job_example(job_id)
+            await get_inference_job_example(job_id)
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
