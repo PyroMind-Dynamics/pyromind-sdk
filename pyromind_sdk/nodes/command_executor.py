@@ -61,9 +61,20 @@ def get_default_inputs(input_types: Dict[str, Any]) -> Dict[str, Any]:
         if "default" in config:
             inputs[input_name] = config["default"]
     for input_name, input_spec in input_types.get("optional", {}).items():
-        _, config = parse_input_spec(input_spec)
+        input_type, config = parse_input_spec(input_spec)
         if "default" in config:
             inputs[input_name] = config["default"]
+        else:
+            if input_type == "STRING":
+                inputs[input_name] = ""
+            elif input_type == "INT":
+                inputs[input_name] = 0
+            elif input_type == "FLOAT":
+                inputs[input_name] = 0.0
+            if input_name in inputs:
+                logger.warning(f"Set default value for input {input_name} of type {input_type} to {inputs[input_name]}, we suggest you to set a default value in the node definition")
+            else:
+                logger.warning(f"No default value for input {input_name} of type {input_type}, we suggest you to set a default value in the node definition")
     return inputs
 
 
