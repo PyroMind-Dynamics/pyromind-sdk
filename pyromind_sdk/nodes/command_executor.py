@@ -325,7 +325,7 @@ def execute_command_template(
     command_template: List[str],
     inputs: Optional[Dict[str, Any]] = None,
     output_names: Optional[List[str]] = None,
-    timeout: int = 300
+    timeout: int = None
 ) -> Dict[str, Any]:
     """Execute command template
     
