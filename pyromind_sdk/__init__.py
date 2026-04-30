@@ -1,10 +1,10 @@
 """
 PyroMind Node SDK
 
-A lightweight SDK stub for local development and testing of third-party nodes 
+A lightweight SDK stub for local development and testing of third-party nodes
 without the full platform codebase (without `app.models.nodes`).
 
-In the real platform runtime environment, nodes should prioritize importing 
+In the real platform runtime environment, nodes should prioritize importing
 base classes from `app.models.nodes`.
 """
 
@@ -19,6 +19,7 @@ from .nodes import (
     yaml_to_node_class,
     python_function_to_yaml,
     PythonToYamlService,
+    python_to_yaml_service,
     FunctionInfo,
     YamlConfig,
     ParameterValidation,
@@ -78,6 +79,7 @@ __all__ = [
     "yaml_to_node_class",
     "python_function_to_yaml",
     "PythonToYamlService",
+    "python_to_yaml_service",
     "FunctionInfo",
     "YamlConfig",
     "ParameterValidation",
@@ -119,4 +121,3 @@ __all__ = [
     "to_workflow_lite",
     "to_workflow_standard",
 ]
-

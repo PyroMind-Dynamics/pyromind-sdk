@@ -24,6 +24,7 @@ from .python_to_yaml import (
     yaml_to_node_class,
     python_function_to_yaml,
     PythonToYamlService,
+    python_to_yaml_service,
     FunctionInfo,
     YamlConfig,
     ParameterValidation,
@@ -69,6 +70,7 @@ __all__ = [
     "yaml_to_node_class",
     "python_function_to_yaml",
     "PythonToYamlService",
+    "python_to_yaml_service",
     "FunctionInfo",
     "YamlConfig",
     "ParameterValidation",
@@ -88,4 +90,3 @@ __all__ = [
     "parse_input_spec",
     "validate_node_class",
 ]
-
