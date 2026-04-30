@@ -12,6 +12,8 @@ from typing import Dict, Any, List, Tuple, Optional
 from pathlib import Path
 from dataclasses import dataclass, field
 
+from docutils.parsers import null
+
 logger = logging.getLogger(__name__)
 
 
@@ -812,7 +814,8 @@ def _extract_all_functions(source: str) -> List[FunctionInfo]:
 class PythonToYamlService:
     """Python 转 YAML 服务"""
 
-    def parse_python_file(self, file_path: str) -> List[FunctionInfo]:
+    @staticmethod
+    def parse_python_file(file_path: str) -> List[FunctionInfo]:
         """解析 Python 文件，返回函数信息列表"""
         path = Path(file_path)
         if not path.exists():
@@ -820,16 +823,15 @@ class PythonToYamlService:
         source = path.read_text(encoding="utf-8")
         return _extract_all_functions(source)
 
+    @staticmethod
     def generate_yaml(
-        self,
         file_path: str,
         function_name: str,
         resource_type: str = "cpu",
         node_name: Optional[str] = None,
         display_name: Optional[str] = None,
         description: str = "",
-        category: str = "Custom",
-        image_id: Optional[str] = None,
+        category: str = None,
     ) -> Dict[str, Any]:
         """生成 YAML 节点配置"""
         base_class = RESOURCE_TYPE_TO_BASE_CLASS.get(resource_type, "PodExecutionNode")
