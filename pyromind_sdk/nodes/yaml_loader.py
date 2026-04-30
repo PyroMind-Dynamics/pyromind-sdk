@@ -191,6 +191,12 @@ def validate_resource_limits(resources: Dict[str, Any]) -> None:
     """
     if "memory_limit" in resources:
         memory = resources["memory_limit"]
+        if isinstance(memory, str):
+            try:
+                memory = int(memory)
+                resources["memory_limit"] = memory
+            except ValueError:
+                raise ValueError(f"memory_limit must be an integer, got {type(memory)}")
         if not isinstance(memory, int):
             raise ValueError(f"memory_limit must be an integer, got {type(memory)}")
         if memory < MIN_MEMORY_LIMIT or memory > MAX_MEMORY_LIMIT:
