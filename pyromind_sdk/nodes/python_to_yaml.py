@@ -10,6 +10,7 @@ import ast
 import inspect
 from typing import Dict, Any, List, Tuple, Optional
 from pathlib import Path
+from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
@@ -678,6 +679,146 @@ def yaml_to_python_code(yaml_path: str, output_path: Optional[str] = None) -> st
     return code
 
 
+
+# ============================================================================
+# PythonToYamlService
+# ============================================================================
+
+
+@dataclass
+class FunctionInfo:
+    """Python 函数信息"""
+
+    name: str
+    start_line: int = 0
+    end_line: int = 0
+    parameters: List[Dict[str, Any]] = field(default_factory=list)
+    return_type: Optional[str] = None
+    docstring: Optional[str] = None
+
+
+@dataclass
+class YamlConfig:
+    """YAML 配置"""
+
+    name: str
+    base_class: str = "PodExecutionNode"
+    description: str = ""
+    category: str = ""
+    display_name: str = ""
+    parameters: List[Dict[str, Any]] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ParameterValidation:
+    """参数校验结果"""
+
+    is_valid: bool = True
+    errors: List[str] = field(default_factory=list)
+
+
+RESOURCE_TYPE_TO_BASE_CLASS = {
+    "cpu": "PodExecutionNode",
+    "gpu": "GpuPodExecutionNode",
+    "tpu": "PodExecutionNode",
+    "npu": "PodExecutionNode",
+    "jupyter": "JupyterLabPodExecutionNode",
+    "jupyterlab": "JupyterLabPodExecutionNode",
+    "port": "PortPodExecutionNode",
+    "daemon": "DaemonPodExecutionNode",
+    "endpoint": "EndpointNode",
+}
+
+
+def _extract_all_functions(source: str) -> List[FunctionInfo]:
+    """从 Python 源码中提取所有函数信息"""
+    module_ast = ast.parse(source)
+    functions: List[FunctionInfo] = []
+    for node in module_ast.body:
+        if isinstance(node, ast.FunctionDef):
+            func_info = FunctionInfo(
+                name=node.name,
+                start_line=node.lineno,
+                end_line=node.end_lineno or node.lineno,
+                return_type=_get_name_from_annotation(node.returns),
+                docstring=ast.get_docstring(node),
+            )
+            for arg in node.args.args:
+                if arg.arg in {"self", "cls"}:
+                    continue
+                func_info.parameters.append(
+                    {
+                        "name": arg.arg,
+                        "dtype": _annotation_to_dtype(arg.annotation),
+                        "type": "input",
+                        "required_type": "optional",
+                    }
+                )
+            functions.append(func_info)
+        elif isinstance(node, ast.ClassDef):
+            for item in node.body:
+                if isinstance(item, ast.FunctionDef):
+                    func_info = FunctionInfo(
+                        name=item.name,
+                        start_line=item.lineno,
+                        end_line=item.end_lineno or item.lineno,
+                        return_type=_get_name_from_annotation(item.returns),
+                        docstring=ast.get_docstring(item),
+                    )
+                    for arg in item.args.args:
+                        if arg.arg in {"self", "cls"}:
+                            continue
+                        func_info.parameters.append(
+                            {
+                                "name": arg.arg,
+                                "dtype": _annotation_to_dtype(arg.annotation),
+                                "type": "input",
+                                "required_type": "optional",
+                            }
+                        )
+                    functions.append(func_info)
+    return functions
+
+
+class PythonToYamlService:
+    """Python 转 YAML 服务"""
+
+    def parse_python_file(self, file_path: str) -> List[FunctionInfo]:
+        """解析 Python 文件，返回函数信息列表"""
+        path = Path(file_path)
+        if not path.exists():
+            raise ValueError(f"Python file does not exist: {file_path}")
+        source = path.read_text(encoding="utf-8")
+        return _extract_all_functions(source)
+
+    def generate_yaml(
+        self,
+        file_path: str,
+        function_name: str,
+        resource_type: str = "cpu",
+        node_name: Optional[str] = None,
+        display_name: Optional[str] = None,
+        description: str = "",
+        category: str = "Custom",
+        image_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """生成 YAML 节点配置"""
+        base_class = RESOURCE_TYPE_TO_BASE_CLASS.get(resource_type, "PodExecutionNode")
+        _node_name = node_name or f"user_{function_name}"
+        return python_function_to_yaml(
+            python_file_path=file_path,
+            function_name=function_name,
+            node_name=_node_name,
+            display_name=display_name,
+            description=description,
+            category=category,
+            base_class=base_class,
+        )
+
+
+
+
 if __name__ == "__main__":
     import sys
     from pathlib import Path
@@ -686,12 +827,16 @@ if __name__ == "__main__":
     parent_dir = Path(__file__).parent.parent
     sys.path.insert(0, str(parent_dir))
     
-    from custom_gui_nodes_template.training import (
-        TrainingConfigNodeV2,
-        LoggingConfigNode,
-        CtrlWorldTrainingNode,
-    )
-    
+    try:
+        from custom_gui_nodes_template.training import (
+            TrainingConfigNodeV2,
+            LoggingConfigNode,
+            CtrlWorldTrainingNode,
+        )
+    except ImportError:
+        logger.warning("custom_gui_nodes_template not found, skipping demo")
+        sys.exit(0)
+
     logger.info("=" * 60)
     logger.info("Python to YAML Conversion Example")
     logger.info("=" * 60)
