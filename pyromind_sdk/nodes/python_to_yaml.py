@@ -151,17 +151,6 @@ def _infer_dtype_from_expr(
     )
 
 
-def _try_extract_return_dict(function_node: ast.FunctionDef) -> Optional[ast.Dict]:
-    """Try to extract the first return dict literal from a function. Returns None if not found."""
-    for node in ast.walk(function_node):
-        if isinstance(node, ast.Return):
-            if node.value is None:
-                continue
-            if isinstance(node.value, ast.Dict):
-                return node.value
-    return None
-
-
 def _parse_function_signature(function_node: ast.FunctionDef) -> List[Dict[str, Any]]:
     """Build input parameter configs from function signature."""
     parameters: List[Dict[str, Any]] = []
@@ -522,7 +511,7 @@ def convert_module_to_yaml(module, output_dir: str = "nodes"):
     # Get all node classes in module
     node_classes = []
     for name, obj in inspect.getmembers(module):
-        if (inspect.isclass(obj) and 
+        if (inspect.isclass(obj) and
             obj.__module__ == module.__name__ and
             name.endswith("Node")):
             node_classes.append((name, obj))
@@ -732,7 +721,6 @@ class FunctionInfo:
     start_line: int = 0
     end_line: int = 0
     parameters: List[Dict[str, Any]] = field(default_factory=list)
-    output_parameters: List[Dict[str, Any]] = field(default_factory=list)
     return_type: Optional[str] = None
     docstring: Optional[str] = None
 
@@ -777,51 +765,48 @@ def _extract_all_functions(source: str) -> List[FunctionInfo]:
     functions: List[FunctionInfo] = []
     for node in module_ast.body:
         if isinstance(node, ast.FunctionDef):
-            func_info = _build_function_info(node)
+            func_info = FunctionInfo(
+                name=node.name,
+                start_line=node.lineno,
+                end_line=node.end_lineno or node.lineno,
+                return_type=_get_name_from_annotation(node.returns),
+                docstring=ast.get_docstring(node),
+            )
+            for arg in node.args.args:
+                if arg.arg in {"self", "cls"}:
+                    continue
+                func_info.parameters.append(
+                    {
+                        "name": arg.arg,
+                        "dtype": _annotation_to_dtype(arg.annotation),
+                        "type": "input",
+                        "required_type": "optional",
+                    }
+                )
             functions.append(func_info)
         elif isinstance(node, ast.ClassDef):
             for item in node.body:
                 if isinstance(item, ast.FunctionDef):
-                    func_info = _build_function_info(item)
+                    func_info = FunctionInfo(
+                        name=item.name,
+                        start_line=item.lineno,
+                        end_line=item.end_lineno or item.lineno,
+                        return_type=_get_name_from_annotation(item.returns),
+                        docstring=ast.get_docstring(item),
+                    )
+                    for arg in item.args.args:
+                        if arg.arg in {"self", "cls"}:
+                            continue
+                        func_info.parameters.append(
+                            {
+                                "name": arg.arg,
+                                "dtype": _annotation_to_dtype(arg.annotation),
+                                "type": "input",
+                                "required_type": "optional",
+                            }
+                        )
                     functions.append(func_info)
     return functions
-
-
-def _build_function_info(function_node: ast.FunctionDef) -> FunctionInfo:
-    """构建单个函数的 FunctionInfo，包含输入参数和输出参数"""
-    func_info = FunctionInfo(
-        name=function_node.name,
-        start_line=function_node.lineno,
-        end_line=function_node.end_lineno or function_node.lineno,
-        return_type=_get_name_from_annotation(function_node.returns),
-        docstring=ast.get_docstring(function_node),
-    )
-    input_types: Dict[str, str] = {}
-    for arg in function_node.args.args:
-        if arg.arg in {"self", "cls"}:
-            continue
-        dtype = _annotation_to_dtype(arg.annotation)
-        func_info.parameters.append(
-            {
-                "name": arg.arg,
-                "dtype": dtype,
-                "type": "input",
-                "required_type": "optional",
-            }
-        )
-        input_types[arg.arg] = dtype
-
-    return_dict_node = _try_extract_return_dict(function_node)
-    if return_dict_node is not None:
-        local_types = _infer_local_assignment_types(function_node, input_types)
-        try:
-            func_info.output_parameters = _build_output_parameters(
-                return_dict_node, input_types, local_types
-            )
-        except ValueError:
-            pass
-
-    return func_info
 
 
 class PythonToYamlService:
