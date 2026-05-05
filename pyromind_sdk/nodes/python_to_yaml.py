@@ -844,6 +844,13 @@ class PythonToYamlService:
             base_class=base_class,
         )
 
+    @staticmethod
+    def to_yaml_string(config: Dict[str, Any]) -> str:
+        """将配置字典转为 YAML 字符串"""
+        return yaml.dump(
+            config, allow_unicode=True, default_flow_style=False, sort_keys=False
+        )
+
 
 python_to_yaml_service = PythonToYamlService()
 
