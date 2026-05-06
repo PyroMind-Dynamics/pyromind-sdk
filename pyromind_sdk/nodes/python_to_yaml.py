@@ -258,7 +258,6 @@ def python_function_to_yaml(
     output_path: Optional[str] = None,
     *,
     description: str = "",
-    category: str = "Examples",
     display_name: Optional[str] = None,
     base_class: str = "PodExecutionNode",
     python_command: str = "python3",
@@ -327,7 +326,6 @@ def python_function_to_yaml(
     config: Dict[str, Any] = {
         "name": node_name,
         "description": description,
-        "category": category,
         "display_name": display_name or node_name,
         "base_class": base_class,
         "python_code": python_code,
@@ -423,8 +421,6 @@ def convert_node_class_to_yaml(
 
     if hasattr(node_class, "DESCRIPTION"):
         config["description"] = node_class.DESCRIPTION
-    if hasattr(node_class, "CATEGORY"):
-        config["category"] = node_class.CATEGORY
     if hasattr(node_class, "DISPLAY_NAME"):
         config["display_name"] = node_class.DISPLAY_NAME
 
@@ -639,8 +635,6 @@ def yaml_to_python_code(yaml_path: str, output_path: Optional[str] = None) -> st
     # Class attributes
     if node_config.get("description"):
         code_lines.append(f'    DESCRIPTION = "{node_config["description"]}"')
-    if node_config.get("category"):
-        code_lines.append(f'    CATEGORY = "{node_config["category"]}"')
     if node_config.get("display_name"):
         code_lines.append(f'    DISPLAY_NAME = "{node_config["display_name"]}"')
     if node_config.get("return_types"):

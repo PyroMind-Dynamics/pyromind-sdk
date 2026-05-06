@@ -38,7 +38,6 @@ Create `my_node.yaml`:
 ```yaml
 name: MyNode
 description: "My custom node"
-category: "Custom"
 base_class: PodExecutionNode
 
 command_template:
@@ -87,7 +86,6 @@ You can also create nodes that execute Python functions directly:
 ```yaml
 name: CalculatorNode
 description: "A calculator node using Python function"
-category: "Custom"
 base_class: PodExecutionNode
 
 # Python function configuration
