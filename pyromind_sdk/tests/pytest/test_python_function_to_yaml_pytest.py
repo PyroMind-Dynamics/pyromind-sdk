@@ -77,7 +77,7 @@ def test_python_function_to_yaml_primitive_return_supported(tmp_path: Path):
     )
 
     assert config["parameters"][0] == {"name": "a", "dtype": "INT", "type": "input", "required_type": "optional"}
-    assert config["parameters"][1] == {"name": "return", "dtype": "INT", "type": "output"}
+    assert config["parameters"][1] == {"name": "output", "dtype": "INT", "type": "output"}
 
 
 def test_python_function_to_yaml_fallback_to_string_for_unknown_type(tmp_path: Path):

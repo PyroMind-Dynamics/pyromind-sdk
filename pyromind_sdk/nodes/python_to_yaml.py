@@ -221,7 +221,7 @@ def _build_output_parameters_from_return(
             if output_dtype not in ALLOWED_YAML_DTYPES:
                 output_dtype = "STRING"
             outputs.append({
-                "name": f"return_{i}",
+                "name": f"output_{i}",
                 "dtype": output_dtype,
                 "type": "output",
             })
@@ -230,7 +230,7 @@ def _build_output_parameters_from_return(
         if output_dtype not in ALLOWED_YAML_DTYPES:
             output_dtype = "STRING"
         outputs.append({
-            "name": "return",
+            "name": "output",
             "dtype": output_dtype,
             "type": "output",
         })
