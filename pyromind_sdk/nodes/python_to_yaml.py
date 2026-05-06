@@ -205,6 +205,38 @@ def _build_output_parameters(
     return outputs
 
 
+def _build_output_parameters_from_return(
+    return_node: ast.AST,
+    input_types: Dict[str, str],
+    local_types: Optional[Dict[str, str]] = None,
+) -> List[Dict[str, Any]]:
+    """Build output parameter configs from any return value (dict, tuple, or primitive)."""
+    if isinstance(return_node, ast.Dict):
+        return _build_output_parameters(return_node, input_types, local_types)
+
+    outputs: List[Dict[str, Any]] = []
+    if isinstance(return_node, ast.Tuple):
+        for i, elt in enumerate(return_node.elts):
+            output_dtype = _infer_dtype_from_expr(elt, input_types, local_types)
+            if output_dtype not in ALLOWED_YAML_DTYPES:
+                output_dtype = "STRING"
+            outputs.append({
+                "name": f"return_{i}",
+                "dtype": output_dtype,
+                "type": "output",
+            })
+    else:
+        output_dtype = _infer_dtype_from_expr(return_node, input_types, local_types)
+        if output_dtype not in ALLOWED_YAML_DTYPES:
+            output_dtype = "STRING"
+        outputs.append({
+            "name": "return",
+            "dtype": output_dtype,
+            "type": "output",
+        })
+    return outputs
+
+
 def _infer_local_assignment_types(
     function_node: ast.FunctionDef, input_types: Dict[str, str]
 ) -> Dict[str, str]:
@@ -252,29 +284,9 @@ def python_function_to_yaml(
     input_types = {p["name"]: p["dtype"] for p in parameters}
     return_value_node = _extract_return_dict(function_node)
     local_types = _infer_local_assignment_types(function_node, input_types)
-    if isinstance(return_value_node, ast.Dict):
-        parameters.extend(
-            _build_output_parameters(return_value_node, input_types, local_types)
-        )
-    elif isinstance(return_value_node, ast.Tuple):
-        for i, elt in enumerate(return_value_node.elts):
-            output_dtype = _infer_dtype_from_expr(elt, input_types, local_types)
-            if output_dtype not in ALLOWED_YAML_DTYPES:
-                output_dtype = "STRING"
-            parameters.append({
-                "name": f"return_{i}",
-                "dtype": output_dtype,
-                "type": "output",
-            })
-    else:
-        output_dtype = _infer_dtype_from_expr(return_value_node, input_types, local_types)
-        if output_dtype not in ALLOWED_YAML_DTYPES:
-            output_dtype = "STRING"
-        parameters.append({
-            "name": "return",
-            "dtype": output_dtype,
-            "type": "output",
-        })
+    parameters.extend(
+        _build_output_parameters_from_return(return_value_node, input_types, local_types)
+    )
 
     if not description:
         # Prefer function docstring.
