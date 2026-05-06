@@ -769,14 +769,14 @@ class ParameterValidation:
 
 RESOURCE_TYPE_TO_BASE_CLASS = {
     "cpu": "PodExecutionNode",
-    "gpu": "GpuPodExecutionNode",
-    "tpu": "PodExecutionNode",
-    "npu": "PodExecutionNode",
-    "jupyter": "JupyterLabPodExecutionNode",
-    "jupyterlab": "JupyterLabPodExecutionNode",
-    "port": "PortPodExecutionNode",
-    "daemon": "DaemonPodExecutionNode",
-    "endpoint": "EndpointNode",
+    "gpu": ["GpuPodExecutionNode", "PodExecutionNode"],
+    # "tpu": "PodExecutionNode",
+    # "npu": "PodExecutionNode",
+    # "jupyter": "JupyterLabPodExecutionNode",
+    # "jupyterlab": "JupyterLabPodExecutionNode",
+    # "port": "PortPodExecutionNode",
+    # "daemon": "DaemonPodExecutionNode",
+    # "endpoint": "EndpointNode",
 }
 
 
