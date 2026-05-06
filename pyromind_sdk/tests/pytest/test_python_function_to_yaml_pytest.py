@@ -22,7 +22,6 @@ def test_python_function_to_yaml_calculator_success():
         function_name="calculate",
         node_name="PythonCalculatorNode",
         description="Calculator using Python function with multiple inputs and outputs",
-        category="Examples",
         display_name="Python Calculator",
     )
 
@@ -56,7 +55,6 @@ def test_python_function_to_yaml_description_from_docstring():
         python_file_path=str(python_path),
         function_name="calculate",
         node_name="PythonCalculatorNode",
-        category="Examples",
         display_name="Python Calculator",
     )
 

@@ -850,7 +850,6 @@ class PythonToYamlService:
         node_name: Optional[str] = None,
         display_name: Optional[str] = None,
         description: str = "",
-        category: str = None,
     ) -> Dict[str, Any]:
         """生成 YAML 节点配置"""
         base_class = RESOURCE_TYPE_TO_BASE_CLASS.get(resource_type, "PodExecutionNode")
@@ -861,7 +860,6 @@ class PythonToYamlService:
             node_name=_node_name,
             display_name=display_name,
             description=description,
-            category=category,
             base_class=base_class,
         )
 
