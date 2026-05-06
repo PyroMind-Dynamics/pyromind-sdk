@@ -63,21 +63,23 @@ def test_python_function_to_yaml_description_from_docstring():
     assert config["description"] == "Perform arithmetic operations (multiple inputs and outputs example)"
 
 
-def test_python_function_to_yaml_rejects_non_dict_return(tmp_path: Path):
-    """Non-dict literal returns are intentionally unsupported."""
-    src = tmp_path / "bad_return.py"
+def test_python_function_to_yaml_primitive_return_supported(tmp_path: Path):
+    """Primitive return types should now be supported with output name 'return'."""
+    src = tmp_path / "primitive_return.py"
     src.write_text(
         "def bad(a: int) -> int:\n"
         "    return a\n",
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="dict literal"):
-        python_function_to_yaml(
-            python_file_path=str(src),
-            function_name="bad",
-            node_name="BadNode",
-        )
+    config = python_function_to_yaml(
+        python_file_path=str(src),
+        function_name="bad",
+        node_name="BadNode",
+    )
+
+    assert config["parameters"][0] == {"name": "a", "dtype": "INT", "type": "input", "required_type": "optional"}
+    assert config["parameters"][1] == {"name": "return", "dtype": "INT", "type": "output"}
 
 
 def test_python_function_to_yaml_fallback_to_string_for_unknown_type(tmp_path: Path):
