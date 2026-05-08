@@ -8,50 +8,60 @@ The workflow conversion functionality is part of the core SDK in `pyromind_sdk.w
 
 ## Comparison
 
-### Standard Workflow Format (Complex)
+### Standard Workflow Format (xyflow)
 
 ```json
 {
   "id": "189cc5d9-cb63-4b03-9a92-9a5b43ae17cc",
-  "revision": 0,
-  "last_node_id": 3,
-  "last_link_id": 2,
+  "name": "LLM Inference Test",
   "nodes": [
     {
-      "id": 2,
+      "id": "node-clone",
       "type": "CloneAndCacheModel",
-      "pos": [-862.06, 387.37],
-      "size": [270, 82],
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "model_path",
-          "type": "MODEL",
-          "links": [1]
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "CloneAndCacheModel",
+        "nodeType": "CloneAndCacheModel",
+        "config": {
+          "model": "Qwen/Qwen3-0.6B",
+          "target_path": "/workspace/models/"
         }
-      ],
-      "properties": {},
-      "widgets_values": ["Qwen/Qwen3-0.6B", "/workspace/models/"]
+      }
+    },
+    {
+      "id": "node-inference",
+      "type": "Inference",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Inference",
+        "nodeType": "Inference",
+        "config": {
+          "model_path": "path/to/model",
+          "port": 3000,
+          "gpu_count": 1
+        }
+      }
     }
   ],
-  "links": [
-    [1, 2, 0, 1, 0, "MODEL"]
+  "edges": [
+    {
+      "id": "e1",
+      "source": "node-clone",
+      "sourceHandle": "model_path",
+      "target": "node-inference",
+      "targetHandle": "model_path"
+    }
   ],
-  "groups": [],
-  "config": {},
-  "extra": {...},
-  "version": 0.4
+  "viewport": {"x": 0, "y": 0, "zoom": 1.0}
 }
 ```
 
-**Issues:**
-- ❌ Contains UI metadata (pos, size, flags, order, mode)
+
+**Issues with the old ComfyUI format (deprecated):**
+- ❌ Uses integer node IDs
 - ❌ Links are cryptic arrays: `[link_id, source, source_idx, target, target_idx, type]`
-- ❌ Hard to read and understand
-- ❌ Not friendly for AI generation
+- ❌ Parameters in `widgets_values` arrays (unnamed)
+- ❌ Contains UI metadata (`pos`, `size`, `flags`, `order`, `mode`)
 
 ### Workflow Lite Format (Simple)
 
@@ -317,10 +327,11 @@ The universal converter uses multiple strategies for parameter extraction:
 
 ### Round-Trip Conversion
 
-When converting `standard → lite → standard`:
-- UI metadata (pos, size, flags) is reset to defaults
-- Socket indices are reassigned sequentially
-- Parameters are preserved but may lose their original widget names
+When converting `xyflow → lite → xyflow`:
+- UI metadata (measured, selected, dragging, properties, viewport) is not regenerated
+- Node positions are auto-generated using topological sort layout
+- Parameters are preserved via `data.config`
+- Node definitions from `data.nodeDefinition` are preserved if available
 
 For best results, keep the original workflow file and use lite format for editing/documentation.
 

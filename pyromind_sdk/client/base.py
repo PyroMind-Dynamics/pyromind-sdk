@@ -24,10 +24,11 @@ RETRY_ALLOWED_METHODS = ["GET", "POST", "PUT", "DELETE"]
 
 class PyroMindAPIError(Exception):
     """Base exception for PyroMind API errors"""
-    def __init__(self, message: str, status_code: Optional[int] = None, response: Optional[Dict] = None):
+    def __init__(self, message: str, status_code: Optional[int] = None, response: Optional[Dict] = None, headers: Optional[Dict] = None):
         self.message = message
         self.status_code = status_code
         self.response = response
+        self.headers = headers
         super().__init__(self.message)
 
 
@@ -265,7 +266,8 @@ class PyroMindClient:
                 raise PyroMindAPIError(
                     message=f"{request_context} failed: {error_message}",
                     status_code=response.status_code,
-                    response=error_data
+                    response=error_data,
+                    headers=dict(response.headers)
                 )
             
             # Return JSON response

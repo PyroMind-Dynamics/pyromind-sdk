@@ -30,22 +30,34 @@ from typing import Dict, List, Any, Optional, Tuple, Set
 from collections import defaultdict, deque
 
 
+def _get_node_type(node: Dict) -> str:
+    """Extract node type from xyflow node dict."""
+    node_type = node.get("type", "")
+    if node_type == "default":
+        data = node.get("data", {})
+        return data.get("nodeType", "")
+    return node_type
+
+
 class WorkflowMapper:
     """
     Handles mapping between node IDs and names.
 
-    Manages bidirectional mapping between numeric node IDs and readable names,
-    including handling of duplicate names with counter suffixes.
+    Manages bidirectional mapping between node IDs (strings in xyflow) and
+    readable names, including handling of duplicate names with counter suffixes.
     """
 
     def __init__(self):
-        self.node_id_to_name: Dict[int, str] = {}
-        self.node_name_to_id: Dict[str, int] = {}
+        self.node_id_to_name: Dict[str, str] = {}
+        self.node_name_to_id: Dict[str, str] = {}
         self.name_counters: Dict[str, int] = {}
 
     def build_from_nodes(self, nodes: List[Dict]) -> None:
         """
-        Build mappings from a list of nodes.
+        Build mappings from a list of nodes (xyflow format).
+
+        In xyflow format, node IDs are strings. The node type is extracted from
+        data.nodeType (for "default" type nodes) or from the type field directly.
 
         Args:
             nodes: List of node dictionaries from workflow
@@ -54,8 +66,8 @@ class WorkflowMapper:
         self.name_counters = {}
 
         for node in nodes:
-            node_id = node.get("id")
-            node_type = node.get("type", "")
+            node_id = str(node.get("id", ""))
+            node_type = _get_node_type(node)
             base_name = self._generate_node_name(node_type)
 
             # Handle duplicate names
@@ -75,24 +87,20 @@ class WorkflowMapper:
         """
         Build mappings from lite format nodes.
 
+        In xyflow format, lite node names become string IDs directly.
+        The 'index' field is preserved for backward compatibility.
+
         Args:
             lite_nodes: Dictionary of {node_name: node_data} from lite format
-
-        Note:
-            If lite nodes don't have "index" field, assigns sequential IDs starting from 1.
-            This allows manual creation of lite workflows without needing to specify indices.
         """
         self.node_name_to_id = {}
-        next_id = 1
 
         for node_name, node_data in lite_nodes.items():
-            # Use existing index if available, otherwise assign sequential ID
-            # Note: index can be 0, so we check for "index" in node_data and it's not None
+            # Use existing index if available, otherwise use node name as ID
             if "index" in node_data and node_data["index"] is not None:
-                node_id = node_data["index"]
+                node_id = str(node_data["index"])
             else:
-                node_id = next_id
-                next_id += 1
+                node_id = node_name
 
             self.node_name_to_id[node_name] = node_id
 
@@ -102,12 +110,12 @@ class WorkflowMapper:
             if node_id not in self.node_id_to_name:
                 self.node_id_to_name[node_id] = node_name
 
-    def get_name(self, node_id: int, fallback: str = None) -> Optional[str]:
-        """Get node name from ID."""
-        return self.node_id_to_name.get(node_id, fallback)
+    def get_name(self, node_id, fallback: str = None) -> Optional[str]:
+        """Get node name from ID (supports string and int IDs)."""
+        return self.node_id_to_name.get(str(node_id) if node_id is not None else None, fallback)
 
-    def get_id(self, node_name: str) -> Optional[int]:
-        """Get node ID from name."""
+    def get_id(self, node_name: str) -> Optional[str]:
+        """Get node ID from name (returns string ID)."""
         return self.node_name_to_id.get(node_name)
 
     @staticmethod
@@ -329,80 +337,179 @@ class LinkBuilder:
         """Reset link ID counter."""
         self._next_link_id = 1
 
-    def build_socket_mappings(self, nodes: List[Dict]) -> Tuple[Dict[int, Dict[str, Dict]], Dict[int, Dict[str, Dict]]]:
+    def build_socket_mappings(self, nodes: List[Dict]) -> Tuple[Dict[str, Dict[str, str]], Dict[str, Dict[str, str]]]:
         """
-        Build socket name mappings for all nodes.
+        Build socket name → index mappings for nodes.
+
+        Supports both xyflow format (with data.nodeDefinition) and legacy format
+        (with inputs/outputs arrays).
 
         Args:
             nodes: List of node dictionaries
 
         Returns:
             Tuple of (input_mappings, output_mappings)
-            Each mapping: {node_id: {idx: name}}
+            Each mapping: {node_id: {name: idx}}
         """
-        input_mappings = {}
-        output_mappings = {}
+        input_mappings: Dict[str, Dict[str, str]] = {}
+        output_mappings: Dict[str, Dict[str, str]] = {}
 
         for node in nodes:
-            node_id = node.get("id")
+            node_id = str(node.get("id", ""))
+            node_type = _get_node_type(node)
+            data = node.get("data", {})
+            node_def = data.get("nodeDefinition", {})
 
-            # Map inputs
-            input_map = {}
-            for idx, inp in enumerate(node.get("inputs", [])):
-                if inp.get("name"):
-                    input_map[idx] = inp.get("name")
+            # Build input name → index mapping
+            input_map: Dict[str, str] = {}
+            if node_def:
+                input_defs = node_def.get("input", {})
+                idx = 0
+                for category in ("required", "optional"):
+                    if category in input_defs:
+                        for param_name in input_defs[category]:
+                            input_map[param_name] = str(idx)
+                            idx += 1
+            elif "inputs" in node:
+                # Legacy format: map inputs from inputs array
+                for idx, inp in enumerate(node.get("inputs", [])):
+                    name = inp.get("name", "")
+                    if name:
+                        input_map[name] = str(idx)
+            elif node_type in self.type_resolver.node_info:
+                param_order = self.type_resolver.get_parameter_order(node_type)
+                for idx, param_name in enumerate(param_order):
+                    input_map[param_name] = str(idx)
             input_mappings[node_id] = input_map
 
-            # Map outputs
-            output_map = {}
-            for idx, out in enumerate(node.get("outputs", [])):
-                if out.get("name"):
-                    output_map[idx] = out.get("name")
+            # Build output name → index mapping
+            output_map: Dict[str, str] = {}
+            if node_def:
+                output_names = node_def.get("output_name", [])
+                for idx, name in enumerate(output_names):
+                    output_map[name] = str(idx)
+            elif "outputs" in node:
+                # Legacy format: map outputs from outputs array
+                for idx, out in enumerate(node.get("outputs", [])):
+                    name = out.get("name", "")
+                    if name:
+                        output_map[name] = str(idx)
+            elif node_type in self.type_resolver.node_info:
+                ni_data = self.type_resolver.node_info[node_type]
+                output_names = ni_data.get("output_name", [])
+                for idx, name in enumerate(output_names):
+                    output_map[name] = str(idx)
             output_mappings[node_id] = output_map
 
         return input_mappings, output_mappings
 
     def build_input_connections(
         self,
-        links: List[List],
+        edges: List[Dict],
         node_mapper: WorkflowMapper,
-        input_mappings: Dict[int, Dict[str, Dict]],
-        output_mappings: Dict[int, Dict[str, Dict]]
-    ) -> Dict[int, Dict[str, Dict]]:
+        input_mappings: Dict[str, Dict[str, str]],
+        output_mappings: Dict[str, Dict[str, str]]
+    ) -> Dict[str, Dict[str, Dict]]:
         """
-        Build input connections mapping from links.
+        Build input connections mapping from xyflow edges.
+
+        In xyflow, edges have: source, target, sourceHandle, targetHandle.
 
         Args:
-            links: List of link arrays
+            edges: List of xyflow edge dictionaries
             node_mapper: WorkflowMapper instance
             input_mappings: Input socket name mappings
             output_mappings: Output socket name mappings
 
         Returns:
-            Dict mapping {node_id: {input_name: {node_id, output_name}}}
+            Dict mapping {target_node_id: {input_name: {node_id, output_name}}}
         """
-        input_connections = {}
+        input_connections: Dict[str, Dict[str, Dict]] = {}
 
-        for link in links:
-            if len(link) >= 6:
-                link_id, source_id, source_idx, target_id, target_idx, link_type = link[:6]
+        for edge in edges:
+            source_id = str(edge.get("source", ""))
+            target_id = str(edge.get("target", ""))
+            source_handle = edge.get("sourceHandle", "")
+            target_handle = edge.get("targetHandle", "")
 
-                # Get socket names
-                source_sockets = output_mappings.get(source_id, {})
-                target_sockets = input_mappings.get(target_id, {})
+            if not source_id or not target_id:
+                continue
 
-                output_name = source_sockets.get(source_idx, f"output_{source_idx}")
-                input_name = target_sockets.get(target_idx, f"input_{target_idx}")
+            # Use handle names directly (xyflow edges are name-based)
+            output_name = source_handle
+            input_name = target_handle
 
-                if target_id not in input_connections:
-                    input_connections[target_id] = {}
+            # Fallback: try to resolve from output_mappings if handle is an index string
+            if output_name.isdigit():
+                out_map = output_mappings.get(source_id, {})
+                # reverse lookup
+                for name, idx in out_map.items():
+                    if idx == output_name:
+                        output_name = name
+                        break
 
-                input_connections[target_id][input_name] = {
-                    "node_id": source_id,
-                    "output_name": output_name
-                }
+            if target_id not in input_connections:
+                input_connections[target_id] = {}
+
+            input_connections[target_id][input_name] = {
+                "node_id": source_id,
+                "output_name": output_name
+            }
 
         return input_connections
+
+    def convert_lite_to_edges(
+        self,
+        lite_nodes: Dict[str, Dict],
+        node_mapper: WorkflowMapper
+    ) -> List[Dict]:
+        """
+        Convert lite format connections to xyflow edges.
+
+        Args:
+            lite_nodes: Lite format nodes dictionary
+            node_mapper: WorkflowMapper for ID resolution
+
+        Returns:
+            List of xyflow edge dictionaries
+        """
+        edges = []
+        edge_index = 1
+
+        for node_name, node_data in lite_nodes.items():
+            target_id = node_mapper.get_id(node_name)
+            if target_id is None:
+                target_id = node_name
+
+            inputs = node_data.get("inputs", {})
+
+            for input_name, input_value in inputs.items():
+                if isinstance(input_value, dict):
+                    source_id = None
+                    output_name = None
+
+                    if "node_id" in input_value:
+                        source_id = str(input_value.get("node_id"))
+                        output_name = input_value.get("output_name", "")
+                    elif "node" in input_value:
+                        source_node_name = input_value.get("node")
+                        output_name = input_value.get("output", "")
+                        source_id = node_mapper.get_id(source_node_name) or source_node_name
+
+                    if source_id is None or output_name is None:
+                        continue
+
+                    edge_id = f"xy-edge__{source_id}{output_name}-{target_id}{input_name}"
+                    edges.append({
+                        "id": edge_id,
+                        "source": source_id,
+                        "target": target_id,
+                        "sourceHandle": output_name,
+                        "targetHandle": input_name
+                    })
+                    edge_index += 1
+
+        return edges
 
     def convert_lite_to_links(
         self,
@@ -410,7 +517,9 @@ class LinkBuilder:
         node_mapper: WorkflowMapper
     ) -> List[List]:
         """
-        Convert lite format connections to standard links array.
+        Convert lite format connections to standard links array (legacy ComfyUI format).
+
+        Deprecated: Use convert_lite_to_edges() for xyflow format.
 
         Args:
             lite_nodes: Lite format nodes dictionary
@@ -657,13 +766,13 @@ class LayoutGenerator:
         for node_name, node_data in lite_nodes.items():
             inputs = node_data.get("inputs", {})
             for input_value in inputs.values():
-                if isinstance(input_value, dict) and "node_id" in input_value:
-                    # Find source node name from node_id
-                    source_id = input_value["node_id"]
-                    source_name = self._find_node_name_by_id(lite_nodes, source_id)
-                    if source_name:
-                        in_edges[node_name].add(source_name)
-                        out_edges[source_name].add(node_name)
+                if isinstance(input_value, dict):
+                    source_id = input_value.get("node_id") or input_value.get("node")
+                    if source_id:
+                        source_name = self._find_node_name_by_id(lite_nodes, source_id)
+                        if source_name:
+                            in_edges[node_name].add(source_name)
+                            out_edges[source_name].add(node_name)
 
         # Step 2: Topological sort to get layer assignment
         layers = self._topological_sort_layers(lite_nodes.keys(), in_edges, out_edges)
@@ -749,20 +858,26 @@ class LayoutGenerator:
         return layers
 
     @staticmethod
-    def _find_node_name_by_id(lite_nodes: Dict[str, Dict], node_id: int) -> Optional[str]:
+    def _find_node_name_by_id(lite_nodes: Dict[str, Dict], node_id) -> Optional[str]:
         """
         Find node name by its ID in lite format.
 
+        Supports both string IDs (xyflow) and int IDs (legacy).
+
         Args:
             lite_nodes: Dictionary of {node_name: node_data}
-            node_id: Node ID to search for
+            node_id: Node ID to search for (string or int)
 
         Returns:
             Node name if found, None otherwise
         """
         for node_name, node_data in lite_nodes.items():
-            if node_data.get("index") == node_id:
+            index = node_data.get("index")
+            if str(index) == str(node_id):
                 return node_name
+        # Fallback: try node name itself as ID
+        if node_id in lite_nodes:
+            return node_id
         return None
 
 
@@ -811,10 +926,10 @@ class WorkflowLiteConverter:
 
     def to_lite(self, workflow: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Convert standard workflow format to workflow_lite format.
+        Convert xyflow workflow format to workflow_lite format.
 
         Args:
-            workflow: Standard workflow dictionary
+            workflow: Xyflow workflow dictionary (with nodes and edges)
 
         Returns:
             Workflow lite dictionary
@@ -823,18 +938,52 @@ class WorkflowLiteConverter:
         self.node_mapper.build_from_nodes(workflow.get("nodes", []))
         input_mappings, output_mappings = self.link_builder.build_socket_mappings(workflow.get("nodes", []))
 
-        # Build input connections
-        input_connections = self.link_builder.build_input_connections(
-            workflow.get("links", []),
-            self.node_mapper,
-            input_mappings,
-            output_mappings
-        )
+        # Read edges (xyflow format) or links (legacy ComfyUI format)
+        edges = workflow.get("edges", [])
+        legacy_links = workflow.get("links", [])
+        if edges:
+            input_connections = self.link_builder.build_input_connections(
+                edges,
+                self.node_mapper,
+                input_mappings,
+                output_mappings
+            )
+        elif legacy_links:
+            # Convert legacy links using socket mappings
+            # Build reverse mapping: {node_id: {str_idx: name}}
+            idx_to_input_name = {}
+            idx_to_output_name = {}
+            for nid, name_map in input_mappings.items():
+                idx_to_input_name[nid] = {v: k for k, v in name_map.items()}
+            for nid, name_map in output_mappings.items():
+                idx_to_output_name[nid] = {v: k for k, v in name_map.items()}
+
+            input_connections = {}
+            for link in legacy_links:
+                if len(link) >= 6:
+                    link_id, source_id, source_idx, target_id, target_idx, link_type = link[:6]
+                    src_id = str(source_id)
+                    tgt_id = str(target_id)
+
+                    # Get actual output name from reverse mapping
+                    output_name = idx_to_output_name.get(src_id, {}).get(str(source_idx), f"output_{source_idx}")
+
+                    # Get actual input name from reverse mapping
+                    input_name = idx_to_input_name.get(tgt_id, {}).get(str(target_idx), f"input_{target_idx}")
+
+                    if tgt_id not in input_connections:
+                        input_connections[tgt_id] = {}
+                    input_connections[tgt_id][input_name] = {
+                        "node_id": src_id,
+                        "output_name": output_name
+                    }
+        else:
+            input_connections = {}
 
         # Convert nodes
         lite_nodes = {}
         for node in workflow.get("nodes", []):
-            node_id = node.get("id")
+            node_id = str(node.get("id", ""))
             node_name = self.node_mapper.get_name(node_id)
             if node_name:
                 lite_nodes[node_name] = self._convert_node_to_lite(
@@ -849,14 +998,14 @@ class WorkflowLiteConverter:
 
     def to_standard(self, lite: Dict[str, Any], original_workflow: Optional[Dict] = None) -> Dict[str, Any]:
         """
-        Convert workflow_lite format to standard workflow format.
+        Convert workflow_lite format to xyflow workflow format.
 
         Args:
             lite: Workflow lite dictionary
             original_workflow: Optional original workflow to preserve metadata
 
         Returns:
-            Standard workflow dictionary
+            Xyflow workflow dictionary
         """
         # Build mappings
         self.node_mapper.build_from_lite_nodes(lite.get("nodes", {}))
@@ -868,107 +1017,104 @@ class WorkflowLiteConverter:
 
         # Convert nodes
         nodes = []
-        max_node_id = 0
         for node_name, node_data in lite.get("nodes", {}).items():
-            node_id = self.node_mapper.get_id(node_name)
-            if node_id is None:
-                node_id = max_node_id + 1
-            max_node_id = max(max_node_id, node_id)
-
-            # Get position for this node
+            node_id = self.node_mapper.get_id(node_name) or node_name
             pos = node_positions.get(node_name, [0, 0])
-            nodes.append(self._convert_node_to_standard(node_name, node_data, node_id, pos))
+            if isinstance(pos, dict):
+                pos_dict = pos
+            elif isinstance(pos, (tuple, list)):
+                pos_dict = {"x": pos[0], "y": pos[1]}
+            else:
+                pos_dict = {"x": 0, "y": 0}
+            nodes.append(self._convert_node_to_standard(node_name, node_data, node_id, pos_dict))
 
-        # Convert connections to links
-        links = self.link_builder.convert_lite_to_links(lite.get("nodes", {}), self.node_mapper)
-
-        # Update nodes with link references
-        # Pass lite nodes to help determine which inputs should have links
-        self._update_nodes_with_links(nodes, links, lite.get("nodes", {}))
+        # Convert connections to xyflow edges
+        edges = self.link_builder.convert_lite_to_edges(lite.get("nodes", {}), self.node_mapper)
 
         # Generate workflow ID (UUID format)
         workflow_id = self._generate_workflow_id(original_workflow, lite)
 
-        # Calculate last_node_id and last_link_id
-        # last_node_id should be the maximum node ID, not the node count
-        last_node_id = 0
-        if nodes:
-            last_node_id = max(node.get("id", 0) for node in nodes)
-        
-        # last_link_id should be the maximum link ID, not the link count
-        last_link_id = 0
-        if links:
-            # Link format: [link_id, source_id, source_idx, target_id, target_idx, link_type]
-            link_ids = [link[0] for link in links if len(link) > 0 and isinstance(link[0], (int, float))]
-            if link_ids:
-                last_link_id = max(link_ids)
+        # Get workflow name from lite or original
+        workflow_name = ""
+        if original_workflow:
+            workflow_name = original_workflow.get("name", "")
+        if not workflow_name:
+            workflow_name = lite.get("name", "")
 
-        # Create standard workflow
+        import datetime
+        timestamp = datetime.datetime.utcnow().isoformat() + "Z"
+
         standard = {
             "id": workflow_id,
-            "revision": 0,
-            "last_node_id": last_node_id,
-            "last_link_id": last_link_id,
+            "name": workflow_name,
             "nodes": nodes,
-            "links": links,
-            "groups": [],
-            "config": {},
-            "extra": {
-                "ds": {
-                    "scale": 1.0,
-                    "offset": [0, 0]
-                }
-            },
-            "version": 0.4
+            "edges": edges,
+            "viewport": {"x": 0, "y": 0, "zoom": 1.0}
         }
 
-        # Preserve original metadata if provided
-        if original_workflow:
-            if "extra" in original_workflow:
-                standard["extra"].update(original_workflow["extra"])
+        if original_workflow and "timestamp" in original_workflow:
+            standard["timestamp"] = original_workflow["timestamp"]
+        else:
+            standard["timestamp"] = timestamp
 
         return standard
 
     def _convert_node_to_lite(self, node: Dict, input_connections: Dict) -> Dict:
         """
-        Convert a single node to lite format.
+        Convert a single node (xyflow or legacy format) to lite format.
 
         Args:
-            node: Node dictionary from standard format
+            node: Node dictionary
             input_connections: Input connections for this node
 
         Returns:
             Lite format node dictionary
         """
-        node_type = node.get("type", "")
-        inputs = node.get("inputs", [])
-        outputs = node.get("outputs", [])
+        node_type = _get_node_type(node)
+        data = node.get("data", {})
+        config = data.get("config", {})
+        node_def = data.get("nodeDefinition", {})
 
         # Build inputs dict
         lite_inputs = {}
-        for inp in inputs:
-            input_name = inp.get("name", "")
-            input_type = inp.get("type", "")
 
-            if input_name:
-                if input_name in input_connections:
-                    lite_inputs[input_name] = input_connections[input_name]
-                elif inp.get("widget"):
-                    # Widget values handled separately
-                    pass
-                else:
-                    lite_inputs[input_name] = None
+        # Add connections first
+        for input_name, conn in input_connections.items():
+            lite_inputs[input_name] = conn
 
-        # Extract parameters from widgets_values
-        parameters = self._extract_parameters_with_names(node, node_type, inputs, input_connections)
-
-        # Merge parameters for non-connected inputs
-        for param_name, param_value in parameters.items():
+        # Add parameter values from xyflow config
+        for param_name, param_value in config.items():
             if param_name not in lite_inputs:
                 lite_inputs[param_name] = param_value
 
-        # Build outputs as list of names
-        lite_outputs = [out.get("name", "") for out in outputs if out.get("name")]
+        # Legacy: extract parameters from widgets_values if present
+        widgets_values = node.get("widgets_values", [])
+        if not config and widgets_values:
+            parameters = self._extract_parameters_with_names_legacy(node, node_type, input_connections)
+            for param_name, param_value in parameters.items():
+                if param_name not in lite_inputs:
+                    lite_inputs[param_name] = param_value
+
+        # Legacy: build inputs from inputs array
+        if not data and "inputs" in node:
+            for inp in node.get("inputs", []):
+                input_name = inp.get("name", "")
+                if input_name and input_name not in lite_inputs and not inp.get("link"):
+                    if inp.get("widget"):
+                        pass  # handled by widgets_values
+                    else:
+                        lite_inputs[input_name] = None
+
+        # Build outputs list
+        lite_outputs = []
+        if node_def and node_def.get("output_name"):
+            lite_outputs = list(node_def["output_name"])
+        elif "outputs" in node:
+            # Legacy: extract output names from outputs array
+            lite_outputs = [out.get("name", "") for out in node.get("outputs", []) if out.get("name")]
+        elif node_type in self.type_resolver.node_info:
+            ni_data = self.type_resolver.node_info[node_type]
+            lite_outputs = list(ni_data.get("output_name", []))
 
         return {
             "type": node_type,
@@ -976,6 +1122,26 @@ class WorkflowLiteConverter:
             "outputs": lite_outputs,
             "index": node.get("id", 0)
         }
+
+    def _extract_parameters_with_names_legacy(
+        self,
+        node: Dict,
+        node_type: str,
+        input_connections: Dict
+    ) -> Dict[str, Any]:
+        """
+        Legacy: Extract parameters from widgets_values for old format nodes.
+
+        Args:
+            node: Node dictionary (old format)
+            node_type: Type of the node
+            input_connections: Mapping of connected inputs
+
+        Returns:
+            Dictionary mapping parameter names to values
+        """
+        inputs = node.get("inputs", [])
+        return self._extract_parameters_with_names(node, node_type, inputs, input_connections)
 
     def _extract_parameters_with_names(
         self,
@@ -1149,46 +1315,53 @@ class WorkflowLiteConverter:
         self,
         node_name: str,
         lite_node: Dict,
-        node_id: int,
-        pos: Tuple[int, int] = (0, 0)
+        node_id: str,
+        pos: Dict[str, float] = None
     ) -> Dict:
         """
-        Convert a lite node to standard format.
+        Convert a lite node to xyflow format.
 
         Args:
             node_name: Node name
             lite_node: Lite format node data
-            node_id: Node ID
-            pos: Node position as (x, y) tuple
+            node_id: Node ID (string)
+            pos: Node position dict {"x": ..., "y": ...}
 
         Returns:
-            Standard format node dictionary
+            Xyflow format node dictionary
         """
+        if pos is None:
+            pos = {"x": 0, "y": 0}
+
         node_type = lite_node.get("type", "PrimitiveNode")
         inputs = lite_node.get("inputs", {})
-        outputs = lite_node.get("outputs", [])
 
-        # Build inputs array and widgets_values
-        inputs_array, widgets_values = self._build_standard_inputs(node_type, inputs, outputs)
+        # Build config dict from inputs
+        config = self._build_xyflow_config(node_type, inputs)
 
-        # Build outputs array
-        outputs_array = self._build_standard_outputs(node_type, outputs)
+        # Build node definition from node_info if available
+        node_definition = None
+        if node_type in self.type_resolver.node_info:
+            node_definition = self.type_resolver.node_info[node_type]
 
-        # Convert pos tuple to list if needed
-        pos_list = list(pos) if isinstance(pos, tuple) else pos
+        # Get display label
+        label = node_type
+        if self.type_resolver.node_info and node_type in self.type_resolver.node_info:
+            label = self.type_resolver.node_info[node_type].get("display_name", node_type)
+
+        data = {
+            "label": label,
+            "nodeType": node_type,
+            "config": config
+        }
+        if node_definition is not None:
+            data["nodeDefinition"] = node_definition
 
         return {
             "id": node_id,
             "type": node_type,
-            "pos": pos_list,
-            "size": [270, 82],
-            "flags": {},
-            "order": 0,
-            "mode": 0,
-            "inputs": inputs_array,
-            "outputs": outputs_array,
-            "properties": {},
-            "widgets_values": widgets_values
+            "position": pos,
+            "data": data
         }
 
     def _build_standard_inputs(
@@ -1375,6 +1548,27 @@ class WorkflowLiteConverter:
                 inputs_array.append(input_dict)
 
         return inputs_array, widgets_values
+
+    def _build_xyflow_config(self, node_type: str, lite_inputs: Dict) -> Dict[str, Any]:
+        """
+        Build xyflow data.config dict from lite inputs.
+
+        Only includes direct parameter values (not connections).
+
+        Args:
+            node_type: Node type
+            lite_inputs: Lite format inputs dict
+
+        Returns:
+            Config dictionary {param_name: value}
+        """
+        config = {}
+        for param_name, param_value in lite_inputs.items():
+            if isinstance(param_value, dict) and ("node_id" in param_value or "node" in param_value):
+                # Connection - not a direct value, skip
+                continue
+            config[param_name] = param_value
+        return config
 
     def _build_standard_outputs(self, node_type: str, lite_outputs: List[str]) -> List[Dict]:
         """

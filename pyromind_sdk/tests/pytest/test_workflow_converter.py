@@ -50,8 +50,8 @@ class TestWorkflowMapper:
 
         assert mapper.get_name(1) == "test"
         assert mapper.get_name(2) == "another_test"
-        assert mapper.get_id("test") == 1
-        assert mapper.get_id("another_test") == 2
+        assert mapper.get_id("test") == "1"
+        assert mapper.get_id("another_test") == "2"
 
     def test_duplicate_name_handling(self):
         """Test handling of duplicate node names."""
@@ -68,6 +68,21 @@ class TestWorkflowMapper:
         assert mapper.get_name(2) == "test_1"
         assert mapper.get_name(3) == "test_2"
 
+    def test_build_from_nodes_xyflow(self):
+        """Test building mappings from xyflow format nodes (string IDs)."""
+        nodes = [
+            {"id": "node-1", "type": "TestNode"},
+            {"id": "node-2", "type": "AnotherTestNode"}
+        ]
+
+        mapper = WorkflowMapper()
+        mapper.build_from_nodes(nodes)
+
+        assert mapper.get_name("node-1") == "test"
+        assert mapper.get_name("node-2") == "another_test"
+        assert mapper.get_id("test") == "node-1"
+        assert mapper.get_id("another_test") == "node-2"
+
     def test_build_from_lite_nodes(self):
         """Test building mappings from lite format nodes."""
         lite_nodes = {
@@ -78,10 +93,10 @@ class TestWorkflowMapper:
         mapper = WorkflowMapper()
         mapper.build_from_lite_nodes(lite_nodes)
 
-        assert mapper.get_id("node_a") == 1
-        assert mapper.get_id("node_b") == 2
-        assert mapper.get_name(1) == "node_a"
-        assert mapper.get_name(2) == "node_b"
+        assert mapper.get_id("node_a") == "1"
+        assert mapper.get_id("node_b") == "2"
+        assert mapper.get_name("1") == "node_a"
+        assert mapper.get_name("2") == "node_b"
 
 
 class TestTypeResolver:
@@ -171,8 +186,8 @@ class TestLinkBuilder:
         builder = LinkBuilder(resolver)
         input_mappings, output_mappings = builder.build_socket_mappings(nodes)
 
-        assert input_mappings[1] == {0: "in1", 1: "in2"}
-        assert output_mappings[1] == {0: "out1", 1: "out2"}
+        assert input_mappings["1"] == {"in1": "0", "in2": "1"}
+        assert output_mappings["1"] == {"out1": "0", "out2": "1"}
 
 
 class TestWorkflowLiteConverter:
@@ -362,7 +377,7 @@ class TestWorkflowLiteConverter:
         assert "in1" in lite["nodes"]["node_b"]["inputs"]
         conn = lite["nodes"]["node_b"]["inputs"]["in1"]
         assert isinstance(conn, dict)
-        assert conn["node_id"] == 1
+        assert conn["node_id"] == "1"
         assert conn["output_name"] == "out1"
 
     def test_round_trip_conversion(self):
@@ -393,13 +408,17 @@ class TestWorkflowLiteConverter:
         lite = converter.to_lite(original)
         back_to_standard = converter.to_standard(lite)
 
-        # Check core data is preserved
+        # Check core data is preserved (xyflow format)
         assert back_to_standard["nodes"][0]["type"] == "TestNode"
-        assert back_to_standard["nodes"][0]["widgets_values"] == ["test_value"]
+        # Without node_info, parameter names may be generic (param_0, etc.)
+        config = back_to_standard["nodes"][0]["data"]["config"]
+        assert "test_value" in config.values()
 
-        # UI metadata may be reset to defaults
-        assert back_to_standard["nodes"][0]["pos"] == [0, 0]
-        assert back_to_standard["nodes"][0]["size"] == [270, 82]
+        # Position is in xyflow format
+        pos = back_to_standard["nodes"][0]["position"]
+        assert pos["x"] == 0
+        assert pos["y"] == 0
+        assert "edges" in back_to_standard
 
 
 class TestConvenienceFunctions:
@@ -975,10 +994,10 @@ class TestWidgetsValuesRoundTrip:
 
         # Check lite format
         lite_node = lite["nodes"]["test"]
-        assert lite_node["inputs"]["connected_param"] == {"node_id": 2, "output_name": "output"}
+        assert lite_node["inputs"]["connected_param"] == {"node_id": "2", "output_name": "output"}
         assert lite_node["inputs"]["unconnected_param"] == "my_value"
-        assert lite_node["inputs"]["connected_model"] == {"node_id": 3, "output_name": "output"}
-        assert lite_node["inputs"]["opt_with_conn"] == {"node_id": 4, "output_name": "output"}
+        assert lite_node["inputs"]["connected_model"] == {"node_id": "3", "output_name": "output"}
+        assert lite_node["inputs"]["opt_with_conn"] == {"node_id": "4", "output_name": "output"}
 
 
 class TestValidationFunctions:
@@ -1845,15 +1864,15 @@ class TestEdgeCases:
         assert len(lite["nodes"]) == 4
 
         # Verify connections
-        assert lite["nodes"]["process_node1"]["inputs"]["in1"]["node_id"] == 1
-        assert lite["nodes"]["process_node2"]["inputs"]["in1"]["node_id"] == 1
-        assert lite["nodes"]["process_node2"]["inputs"]["in2"]["node_id"] == 1
-        assert lite["nodes"]["final"]["inputs"]["in1"]["node_id"] == 2
+        assert lite["nodes"]["process_node1"]["inputs"]["in1"]["node_id"] == "1"
+        assert lite["nodes"]["process_node2"]["inputs"]["in1"]["node_id"] == "1"
+        assert lite["nodes"]["process_node2"]["inputs"]["in2"]["node_id"] == "1"
+        assert lite["nodes"]["final"]["inputs"]["in1"]["node_id"] == "2"
 
         # Test round-trip conversion
         back_to_standard = converter.to_standard(lite)
         assert len(back_to_standard["nodes"]) == 4
-        assert len(back_to_standard["links"]) == 4
+        assert len(back_to_standard["edges"]) == 4
 
 
 class TestInputIndexCalculation:
@@ -2042,9 +2061,12 @@ class TestLastNodeAndLinkIdCalculation:
         converter = WorkflowLiteConverter()
         standard = converter.to_standard(lite)
 
-        # Should use max node ID (5), not count (3)
-        assert standard["last_node_id"] == 5
-        assert standard["last_node_id"] != len(standard["nodes"])
+        # Should have correct node count (xyflow format)
+        assert len(standard["nodes"]) == 3
+        assert "edges" in standard
+        # Node IDs are string-based in xyflow format
+        node_ids = [n["id"] for n in standard["nodes"]]
+        assert "5" in str(node_ids)  # index 5 should be preserved
 
     def test_last_link_id_uses_maximum_not_count(self):
         """Test that last_link_id uses maximum link ID, not link count."""
@@ -2079,11 +2101,8 @@ class TestLastNodeAndLinkIdCalculation:
         converter = WorkflowLiteConverter()
         standard = converter.to_standard(lite)
 
-        # Links are auto-assigned IDs starting from 1
-        # With 2 links, IDs should be 1 and 2, so max should be 2
-        assert len(standard["links"]) == 2
-        assert standard["last_link_id"] == 2
-        assert standard["last_link_id"] == len(standard["links"])
+        # xyflow format: edges instead of links
+        assert len(standard["edges"]) == 2
 
     def test_last_node_id_with_gap_in_ids(self):
         """Test last_node_id calculation when there are gaps in node IDs."""
@@ -2114,9 +2133,9 @@ class TestLastNodeAndLinkIdCalculation:
         converter = WorkflowLiteConverter()
         standard = converter.to_standard(lite)
 
-        # Should use max (20), not count (3)
-        assert standard["last_node_id"] == 20
+        # xyflow format: node IDs are string-based, check node count
         assert len(standard["nodes"]) == 3
+        assert "edges" in standard
 
     def test_last_node_id_single_node(self):
         """Test last_node_id with single node."""
@@ -2135,9 +2154,9 @@ class TestLastNodeAndLinkIdCalculation:
         converter = WorkflowLiteConverter()
         standard = converter.to_standard(lite)
 
-        assert standard["last_node_id"] == 42
-        # Note: last_node_id (42) is different from node count (1), demonstrating max vs count
-        assert standard["last_node_id"] != len(standard["nodes"])
+        # xyflow format: check node count and edges exist
+        assert len(standard["nodes"]) == 1
+        assert "edges" in standard
 
     def test_last_node_id_zero_based(self):
         """Test last_node_id with zero-based node IDs."""
@@ -2162,8 +2181,8 @@ class TestLastNodeAndLinkIdCalculation:
         converter = WorkflowLiteConverter()
         standard = converter.to_standard(lite)
 
-        assert standard["last_node_id"] == 1
         assert len(standard["nodes"]) == 2
+        assert "edges" in standard
 
     def test_last_link_id_with_manual_link_ids(self):
         """Test last_link_id when links have manually assigned IDs (if supported)."""
@@ -2200,11 +2219,8 @@ class TestLastNodeAndLinkIdCalculation:
         converter = WorkflowLiteConverter()
         standard = converter.to_standard(lite)
 
-        # Should have 2 links with IDs 1 and 2
-        assert len(standard["links"]) == 2
-        link_ids = [link[0] for link in standard["links"]]
-        assert max(link_ids) == 2
-        assert standard["last_link_id"] == 2
+        # xyflow format: edges instead of links
+        assert len(standard["edges"]) == 2
 
     def test_last_node_and_link_id_empty_workflow(self):
         """Test last_node_id and last_link_id with empty workflow."""
@@ -2216,9 +2232,9 @@ class TestLastNodeAndLinkIdCalculation:
         converter = WorkflowLiteConverter()
         standard = converter.to_standard(lite)
 
-        # Should be 0 for empty workflow
-        assert standard["last_node_id"] == 0
-        assert standard["last_link_id"] == 0
+        # For empty workflow, should have no nodes and empty edges
+        assert len(standard["nodes"]) == 0
+        assert standard["edges"] == []
 
     def test_last_node_id_preserved_from_original(self):
         """Test that last_node_id correctly reflects max even when converting from standard."""
@@ -2273,9 +2289,9 @@ class TestLastNodeAndLinkIdCalculation:
         lite = converter.to_lite(original)
         back_to_standard = converter.to_standard(lite, original)
 
-        # Should use max node ID (15), not count (3)
-        assert back_to_standard["last_node_id"] == 15
+        # xyflow format: check node count
         assert len(back_to_standard["nodes"]) == 3
+        assert "edges" in back_to_standard
 
 
 class TestInputIndexWithRealScenarios:
@@ -2380,28 +2396,24 @@ class TestInputIndexWithRealScenarios:
 
         # Verify lite format
         process_node = lite["nodes"]["process"]
-        assert process_node["inputs"]["input1"] == {"node_id": 1, "output_name": "output"}
+        assert process_node["inputs"]["input1"] == {"node_id": "1", "output_name": "output"}
         assert process_node["inputs"]["input2"] == "direct_value"
-        assert process_node["inputs"]["input3"] == {"node_id": 1, "output_name": "output"}
+        assert process_node["inputs"]["input3"] == {"node_id": "1", "output_name": "output"}
 
-        # Convert back to standard
+        # Convert back to standard (xyflow format)
         back_to_standard = converter.to_standard(lite)
 
-        # Verify that input indices are correct
-        process_node_std = back_to_standard["nodes"][1]  # ProcessNode should be second
-        inputs = process_node_std["inputs"]
+        # Verify output has xyflow format
+        assert "edges" in back_to_standard
+        assert len(back_to_standard["nodes"]) == 2
 
-        # input1 should be at index 0 (first connected input)
-        assert inputs[0]["name"] == "input1"
-        assert inputs[0]["link"] == 1
+        # xyflow format: edges reference nodes by handle names
+        assert any(e["targetHandle"] == "input1" for e in back_to_standard["edges"])
+        assert any(e["targetHandle"] == "input3" for e in back_to_standard["edges"])
 
-        # input3 should be at index 1 (second connected input, input2 is skipped)
-        assert inputs[1]["name"] == "input3"
-        assert inputs[1]["link"] == 2
+        # input2 should be a direct value in config, not a connection
+        assert not any(e["targetHandle"] == "input2" for e in back_to_standard["edges"])
 
-        # input2 should NOT be in inputs array (it's unconnected, value in widgets_values)
-        input_names = [inp["name"] for inp in inputs]
-        assert "input2" not in input_names
-
-        # But input2 value should be in widgets_values
-        assert "direct_value" in back_to_standard["nodes"][1]["widgets_values"]
+        # input2 value should be in data.config
+        config = back_to_standard["nodes"][1]["data"]["config"]
+        assert config.get("input2") == "direct_value"

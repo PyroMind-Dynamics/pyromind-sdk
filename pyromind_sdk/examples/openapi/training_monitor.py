@@ -285,7 +285,7 @@ def monitor_task(task_id: str, refresh_interval: int = 5, auto_refresh: bool = T
             display_workflow_status(task, show_details=True)
             
             # Check if task is completed
-            if task.status in ["Succeeded", "Failed", "Cancelled"]:
+            if task.status in ["Succeeded", "Failed", "Cancelled", "Error"]:
                 print(f"\n{'=' * 80}")
                 print(f"Task {task.status}!")
                 print(f"{'=' * 80}")

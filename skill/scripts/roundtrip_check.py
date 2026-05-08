@@ -39,13 +39,11 @@ def main() -> int:
 
     src_nodes = len(source.get("nodes", []))
     new_nodes = len(regenerated.get("nodes", []))
-    src_links = len(source.get("links", []))
-    new_links = len(regenerated.get("links", []))
+    src_edges = len(source.get("edges", source.get("links", [])))
+    new_edges = len(regenerated.get("edges", regenerated.get("links", [])))
 
     print(f"Nodes: {src_nodes} -> {new_nodes}")
-    print(f"Links: {src_links} -> {new_links}")
-    print(f"last_node_id: {regenerated.get('last_node_id')}")
-    print(f"last_link_id: {regenerated.get('last_link_id')}")
+    print(f"Edges: {src_edges} -> {new_edges}")
 
     if args.output:
         _save_json(args.output, regenerated)

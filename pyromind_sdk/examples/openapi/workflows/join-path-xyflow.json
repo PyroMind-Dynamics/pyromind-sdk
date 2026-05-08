@@ -1,0 +1,177 @@
+{
+  "id": "39a0d257-4d0a-45d3-8a6e-1d5cbb3d1697",
+  "name": "joinPathXyflow",
+  "nodes": [
+    {
+      "id": "1",
+      "type": "default",
+      "position": {
+        "x": 829,
+        "y": 411
+      },
+      "data": {
+        "label": "Clone Dataset",
+        "nodeType": "CloneAndCacheDataset",
+        "nodeDefinition": {
+          "name": "CloneAndCacheDataset",
+          "display_name": "Clone Dataset",
+          "description": "Clone datasets for training and evaluation. The dataset is stored in the pyromind environment, so you can clone it very fast.",
+          "input": {
+            "required": {
+              "dataset": [
+                [
+                  "OpenGVLab/ScaleCUA-Data",
+                  "Writer/omniact",
+                  "agibot-world/AgiBotWorld-Alpha-327",
+                  "agibot-world/AgiBotWorld-Alpha-327-Extract",
+                  "agibot-world/AgiBotWorld-Alpha-CtrlWorld-327",
+                  "agibot-world/AgiBotWorld-Alpha-Lerobot-327",
+                  "agibot-world/AgiBotWorld-Alpha-Openpi-327",
+                  "cadene/droid_1.0.1",
+                  "gui-360/gui-excel",
+                  "gui-360/processed_data",
+                  "henryhe0123/PC-Agent-E",
+                  "openai/gsm8k",
+                  "ritzzai/GUI-R1",
+                  "xlangai/aguvis-stage1",
+                  "xlangai/aguvis-stage2",
+                  "zonghanHZH/UGround-V1-8k"
+                ]
+              ],
+              "target_path": [
+                [
+                  "/workspace/datasets/"
+                ],
+                {
+                  "default": "/workspace/datasets/"
+                }
+              ]
+            }
+          },
+          "output": [
+            "STRING"
+          ],
+          "output_is_list": [
+            false
+          ],
+          "output_name": [
+            "dataset_path"
+          ],
+          "category": "",
+          "output_node": false,
+          "experimental": false,
+          "deprecated": false,
+          "python_module": "test_nodes",
+          "id": 149,
+          "node_type": "system",
+          "created_at": "2026-04-15T02:02:46.123329+00:00",
+          "updated_at": "2026-04-22T08:52:40.605676+00:00",
+          "version": 2,
+          "is_enabled": true,
+          "metanode_deleted": false
+        },
+        "config": {
+          "dataset": "openai/gsm8k",
+          "target_path": "/workspace/datasets/"
+        }
+      },
+      "measured": {
+        "width": 150,
+        "height": 140
+      }
+    },
+    {
+      "id": "2",
+      "type": "default",
+      "position": {
+        "x": 1338,
+        "y": 425
+      },
+      "data": {
+        "label": "Join Path",
+        "nodeType": "PathJoinNode",
+        "nodeDefinition": {
+          "name": "PathJoinNode",
+          "display_name": "Join Path",
+          "description": "Join a base path with a subpath",
+          "input": {
+            "required": {
+              "base_path": [
+                "STRING",
+                {
+                  "default": ""
+                }
+              ],
+              "subpath": [
+                "STRING",
+                {
+                  "default": ""
+                }
+              ]
+            },
+            "optional": {
+              "environment": [
+                "ENV"
+              ]
+            }
+          },
+          "output": [
+            "STRING"
+          ],
+          "output_is_list": [
+            false
+          ],
+          "output_name": [
+            "joined_path"
+          ],
+          "category": "utils",
+          "output_node": false,
+          "experimental": false,
+          "deprecated": false,
+          "python_module": "test_nodes",
+          "id": 164,
+          "node_type": "system",
+          "created_at": "2026-04-15T02:03:00.964765+00:00",
+          "updated_at": "2026-04-15T02:03:00.964765+00:00",
+          "version": 1,
+          "is_enabled": true,
+          "metanode_deleted": false
+        },
+        "config": {
+          "base_path": "",
+          "subpath": "test",
+          "environment": ""
+        }
+      },
+      "measured": {
+        "width": 150,
+        "height": 140
+      }
+    }
+  ],
+  "edges": [
+    {
+      "animated": false,
+      "style": {
+        "stroke": "#22c55e",
+        "strokeWidth": 2,
+        "color": "#22c55e"
+      },
+      "type": "default",
+      "source": "1",
+      "sourceHandle": "dataset_path",
+      "target": "2",
+      "targetHandle": "base_path",
+      "data": {
+        "connectionType": "STRING"
+      },
+      "id": "xy-edge__1dataset_path-2base_path"
+    }
+  ],
+  "viewport": {
+    "x": -270.1497793253243,
+    "y": -34.405261500379254,
+    "zoom": 1.1509002697385056
+  },
+  "timestamp": "2026-05-07T08:05:46.053Z"
+}

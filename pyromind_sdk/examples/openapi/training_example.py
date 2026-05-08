@@ -91,6 +91,8 @@ def create_training_task_example(workflow_path: Path, task_name: str = "example-
         return task.task_id
     except (PyroMindAPIError, FileNotFoundError, ValidationError) as e:
         print(f"✗ Failed to create training task: {e}")
+        if isinstance(e, PyroMindAPIError) and e.headers:
+            print(f"  Response headers: {e.headers}")
         return None
     finally:
         client.close()
@@ -340,6 +342,10 @@ def wait_for_task_completion(task_id: str, target_status: str = "Succeeded",
         if not task:
             return None
         
+        if task.status in ("Terminated", "Cancelled", "Failed", "Error"):
+            print(f"✗ Task {task_id} reached terminal status: {task.status}")
+            return None
+
         if task.status == target_status:
             print(f"✓ Task {task_id} reached status '{target_status}'")
             # Get node outputs after task is completed
@@ -548,7 +554,7 @@ def main():
     get_node_info_example()
     
     # Then process workflow files
-    workflow_files = ["llm_test.json", "join_path.json", "clone.json"]
+    workflow_files = ["clone-xyflow.json","join-path-xyflow.json"]
     workflows_dir = Path(__file__).parent / "workflows"
     
     for workflow_file in workflow_files:
@@ -570,7 +576,7 @@ def main():
         if task:
             workflow = _load_workflow(workflow_path)
             draw_workflow_graph(workflow)
-            delete_training_task_example(task_id)
+            # delete_training_task_example(task_id)
 
 
 if __name__ == "__main__":
