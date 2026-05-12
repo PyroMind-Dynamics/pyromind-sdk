@@ -35,7 +35,6 @@ def build_parser() -> argparse.ArgumentParser:
     python_to_yaml.add_argument("--output", type=Path, default=None, help="Write YAML to this file")
 
     python_to_yaml.add_argument("--description", type=str, default="", help="YAML 'description'")
-    python_to_yaml.add_argument("--category", type=str, default="Examples", help="YAML 'category'")
     python_to_yaml.add_argument("--display-name", type=str, default=None, help="YAML 'display_name'")
     python_to_yaml.add_argument("--base-class", type=str, default="PodExecutionNode", help="YAML 'base_class'")
     python_to_yaml.add_argument(
@@ -68,7 +67,6 @@ def main(argv: Optional[List[str]] = None) -> int:
             node_name=args.node_name,
             output_path=None,
             description=args.description,
-            category=args.category,
             display_name=args.display_name,
             base_class=args.base_class,
             python_command=args.python_command,
