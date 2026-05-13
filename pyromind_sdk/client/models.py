@@ -294,6 +294,10 @@ class InferenceJobRequest(BaseModel):
     resources: Optional[ResourceConfig] = None
     environment_variables: Optional[Dict[str, str]] = None
     name: Optional[str] = None
+    model_name: Optional[str] = None
+    inf_image: Optional[str] = None
+
+
 
 
 
