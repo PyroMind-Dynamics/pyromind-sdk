@@ -308,16 +308,11 @@ def validate_standard_format(
         raise SchemaValidationError(f"Schema validation failed: {errors[0]}")
 
     nodes = data.get("nodes", [])
-    edges = data.get("edges", [])
-    links = data.get("links", [])  # legacy
 
     # Step 2: Build mappings
     try:
         node_map = _build_node_map(nodes)
-        if edges:
-            link_map = _build_edge_map(edges)
-        else:
-            link_map = _build_link_map(links)
+        link_map = _build_edge_map(data.get("edges", []))
     except Exception as e:
         errors.append(f"Failed to build mappings: {str(e)}")
         if strict:
@@ -329,12 +324,8 @@ def validate_standard_format(
     errors.extend(node_errors)
 
     # Step 4: Edge validation
-    if edges:
-        edge_errors = _validate_edges(edges, node_map, link_map, node_info)
-        errors.extend(edge_errors)
-    else:
-        link_errors = _validate_links(links, node_map, link_map, node_info)
-        errors.extend(link_errors)
+    edge_errors = _validate_edges(data.get("edges", []), node_map, link_map, node_info)
+    errors.extend(edge_errors)
 
     # Step 5: Type compatibility validation
     if node_info:
@@ -342,12 +333,11 @@ def validate_standard_format(
         errors.extend(type_errors)
         
         # Validate config/widgets_values against node_info
-        if edges:
-            for node in nodes:
+        for node in nodes:
+            if node.get("data", {}).get("config", {}):
                 config_errors = _validate_xyflow_config(node, node_info)
                 errors.extend(config_errors)
-        else:
-            for node in nodes:
+            if node.get("widgets_values"):
                 order_errors = _validate_widgets_values_order(node, node_info)
                 errors.extend(order_errors)
 
@@ -972,6 +962,11 @@ def _validate_standard_node_definition(
     optional_params = input_defs.get("optional", {})
     all_params = {**required_params, **optional_params}
 
+    # Get params from xyflow config
+    data = node.get("data", {})
+    config = data.get("config", {})
+    config_params = set(config.keys())
+
     # Get node inputs (from inputs array)
     inputs_array = node.get("inputs", [])
     node_input_names = set()
@@ -979,9 +974,7 @@ def _validate_standard_node_definition(
         if isinstance(inp, dict) and "name" in inp:
             node_input_names.add(inp["name"])
 
-    # Get parameters that have values in widgets_values
-    # In standard format, parameters without connections may not appear in inputs array
-    # Their values are stored in widgets_values instead
+    # Get parameters from legacy widgets_values
     widgets_values_params = set()
     if node.get("widgets_values"):
         widgets_values_params = set(_get_widgets_values_param_order(node_type, node, node_info))
@@ -989,12 +982,15 @@ def _validate_standard_node_definition(
     # Check required parameters are present
     # A required parameter is present if it's either:
     # 1. In the inputs array (has connection), OR
-    # 2. In widgets_values (no connection, direct value)
+    # 2. In xyflow config (no connection, direct value), OR
+    # 3. In widgets_values (legacy format)
     for param_name in required_params.keys():
+        if param_name in config_params:
+            continue
         if param_name not in node_input_names and param_name not in widgets_values_params:
             errors.append(
                 f"Node {node_id} (type '{node_type}') is missing required parameter '{param_name}' "
-                f"(not found in inputs array or widgets_values)"
+                f"(not found in inputs array, widgets_values, or config)"
             )
 
     # Check that all input parameters exist in node_info and validate types
@@ -1027,28 +1023,28 @@ def _validate_standard_node_definition(
             )
             errors.extend(value_errors)
 
-    # Validate output names using shared helper
+    # Validate output names (xyflow: nodeDefinition; legacy: outputs array)
+    node_definition = data.get("nodeDefinition", {})
     outputs_array = node.get("outputs", [])
-    node_output_names = [out.get("name") for out in outputs_array if isinstance(out, dict) and "name" in out]
+    if node_definition:
+        node_output_names = node_definition.get("output_name", [])
+    else:
+        node_output_names = [out.get("name") for out in outputs_array if isinstance(out, dict) and "name" in out]
     errors.extend(_validate_node_outputs(str(node_id), node_type, node_output_names, node_info))
 
     # Check output type compatibility
     expected_output_types = node_def.get("output", [])
-    if expected_output_types:
-        for i, out in enumerate(outputs_array):
-            if not isinstance(out, dict):
-                continue
-
-            output_type = out.get("type", "AUTO")
-            if i < len(expected_output_types):
+    actual_output_types = node_definition.get("output", expected_output_types) if node_definition else expected_output_types
+    if expected_output_types and actual_output_types:
+        for i, output_name in enumerate(node_output_names):
+            if i < len(expected_output_types) and i < len(actual_output_types):
                 expected_type = expected_output_types[i]
-                if output_type != "AUTO" and expected_type:
-                    if not _is_type_compatible(output_type, expected_type):
-                        output_name = out.get("name", f"output[{i}]")
-                        errors.append(
-                            f"Node {node_id} (type '{node_type}') output '{output_name}' has type '{output_type}', "
-                            f"but node_info expects type '{expected_type}' (types are not compatible)"
-                        )
+                actual_type = actual_output_types[i]
+                if expected_type and not _is_type_compatible(actual_type, expected_type):
+                    errors.append(
+                        f"Node {node_id} (type '{node_type}') output '{output_name}' has type '{actual_type}', "
+                        f"but node_info expects type '{expected_type}' (types are not compatible)"
+                    )
 
     return errors
 

@@ -511,98 +511,6 @@ class LinkBuilder:
 
         return edges
 
-    def convert_lite_to_links(
-        self,
-        lite_nodes: Dict[str, Dict],
-        node_mapper: WorkflowMapper
-    ) -> List[List]:
-        """
-        Convert lite format connections to standard links array (legacy ComfyUI format).
-
-        Deprecated: Use convert_lite_to_edges() for xyflow format.
-
-        Args:
-            lite_nodes: Lite format nodes dictionary
-            node_mapper: WorkflowMapper for ID resolution
-
-        Returns:
-            List of link arrays
-        """
-        self.reset_link_id()
-        links = []
-
-        # Build output name to index mapping
-        node_outputs = {}
-        for node_name, node_data in lite_nodes.items():
-            node_id = node_mapper.get_id(node_name)
-            if node_id is None:
-                continue
-
-            outputs = node_data.get("outputs", [])
-            output_map = {name: idx for idx, name in enumerate(outputs)}
-            node_outputs[node_id] = output_map
-
-        node_id_to_name = {v: k for k, v in node_mapper.node_name_to_id.items()}
-
-        # Process connections
-        for node_name, node_data in lite_nodes.items():
-            target_id = node_mapper.get_id(node_name)
-            if target_id is None:
-                continue
-
-            inputs = node_data.get("inputs", {})
-
-            for input_name, input_value in inputs.items():
-                if isinstance(input_value, dict):
-                    # Support two connection formats:
-                    # 1. {"node_id": 123, "output_name": "model"} - numeric ID (from standard conversion)
-                    # 2. {"node": "node_name", "output": "output"} - node name (AI-friendly)
-
-                    source_id = None
-                    output_name = None
-
-                    # Format 1: Numeric node_id (from standard conversion)
-                    if "node_id" in input_value:
-                        source_id = input_value.get("node_id")
-                        output_name = input_value.get("output_name")
-                    # Format 2: Node name (AI-friendly, for manual creation)
-                    elif "node" in input_value:
-                        source_node_name = input_value.get("node")
-                        output_name = input_value.get("output")
-                        # Look up node_id from node_name
-                        source_id = node_mapper.get_id(source_node_name)
-
-                    if source_id is None or output_name is None:
-                        continue
-
-                    # Get output index
-                    output_idx = 0
-                    if source_id in node_outputs:
-                        output_map = node_outputs[source_id]
-                        output_idx = output_map.get(output_name, 0)
-
-                    # Calculate input index
-                    # Get param_order from type_resolver for accurate index calculation
-                    node_type = node_data.get("type", "")
-                    param_order = self.type_resolver.get_parameter_order(node_type) if node_type else None
-                    input_idx = self._calculate_input_index(node_data, input_name, node_type, param_order)
-
-                    # Determine link type
-                    link_type = self._determine_link_type(
-                        source_id, output_name, output_idx,
-                        node_id_to_name, lite_nodes
-                    )
-
-                    # Create link
-                    links.append([0, source_id, output_idx, target_id, input_idx, link_type])
-
-        # Sort and assign link IDs
-        links.sort(key=lambda x: (x[3], x[1]))  # Sort by target_id, then source_id
-        for i, link in enumerate(links):
-            link[0] = i + 1
-
-        return links
-
     def _calculate_input_index(
         self,
         node_data: Dict,
@@ -630,7 +538,6 @@ class LinkBuilder:
             node_type = node_data.get("type", "")
         
         # If we have param_order, use it to determine the correct index
-        # This matches the order used in _build_standard_inputs
         # IMPORTANT: Only connected inputs (with links) are in inputs_array
         # Unconnected inputs (direct values) are NOT in inputs_array, only in widgets_values
         if param_order and target_input_name in param_order:
@@ -639,7 +546,6 @@ class LinkBuilder:
             
             # Count inputs that come before this one in param_order
             # Only count those that will actually be in inputs_array
-            # Logic matches _build_standard_inputs:
             # - Only connected inputs (have link) are in inputs_array
             # - Unconnected inputs (direct values) are NOT in inputs_array
             for i in range(target_param_idx):
@@ -938,9 +844,8 @@ class WorkflowLiteConverter:
         self.node_mapper.build_from_nodes(workflow.get("nodes", []))
         input_mappings, output_mappings = self.link_builder.build_socket_mappings(workflow.get("nodes", []))
 
-        # Read edges (xyflow format) or links (legacy ComfyUI format)
         edges = workflow.get("edges", [])
-        legacy_links = workflow.get("links", [])
+        input_connections = {}
         if edges:
             input_connections = self.link_builder.build_input_connections(
                 edges,
@@ -948,37 +853,6 @@ class WorkflowLiteConverter:
                 input_mappings,
                 output_mappings
             )
-        elif legacy_links:
-            # Convert legacy links using socket mappings
-            # Build reverse mapping: {node_id: {str_idx: name}}
-            idx_to_input_name = {}
-            idx_to_output_name = {}
-            for nid, name_map in input_mappings.items():
-                idx_to_input_name[nid] = {v: k for k, v in name_map.items()}
-            for nid, name_map in output_mappings.items():
-                idx_to_output_name[nid] = {v: k for k, v in name_map.items()}
-
-            input_connections = {}
-            for link in legacy_links:
-                if len(link) >= 6:
-                    link_id, source_id, source_idx, target_id, target_idx, link_type = link[:6]
-                    src_id = str(source_id)
-                    tgt_id = str(target_id)
-
-                    # Get actual output name from reverse mapping
-                    output_name = idx_to_output_name.get(src_id, {}).get(str(source_idx), f"output_{source_idx}")
-
-                    # Get actual input name from reverse mapping
-                    input_name = idx_to_input_name.get(tgt_id, {}).get(str(target_idx), f"input_{target_idx}")
-
-                    if tgt_id not in input_connections:
-                        input_connections[tgt_id] = {}
-                    input_connections[tgt_id][input_name] = {
-                        "node_id": src_id,
-                        "output_name": output_name
-                    }
-        else:
-            input_connections = {}
 
         # Convert nodes
         lite_nodes = {}
@@ -1061,7 +935,7 @@ class WorkflowLiteConverter:
 
     def _convert_node_to_lite(self, node: Dict, input_connections: Dict) -> Dict:
         """
-        Convert a single node (xyflow or legacy format) to lite format.
+        Convert a single node (xyflow format) to lite format.
 
         Args:
             node: Node dictionary
@@ -1075,43 +949,16 @@ class WorkflowLiteConverter:
         config = data.get("config", {})
         node_def = data.get("nodeDefinition", {})
 
-        # Build inputs dict
         lite_inputs = {}
-
-        # Add connections first
         for input_name, conn in input_connections.items():
             lite_inputs[input_name] = conn
-
-        # Add parameter values from xyflow config
         for param_name, param_value in config.items():
             if param_name not in lite_inputs:
                 lite_inputs[param_name] = param_value
 
-        # Legacy: extract parameters from widgets_values if present
-        widgets_values = node.get("widgets_values", [])
-        if not config and widgets_values:
-            parameters = self._extract_parameters_with_names_legacy(node, node_type, input_connections)
-            for param_name, param_value in parameters.items():
-                if param_name not in lite_inputs:
-                    lite_inputs[param_name] = param_value
-
-        # Legacy: build inputs from inputs array
-        if not data and "inputs" in node:
-            for inp in node.get("inputs", []):
-                input_name = inp.get("name", "")
-                if input_name and input_name not in lite_inputs and not inp.get("link"):
-                    if inp.get("widget"):
-                        pass  # handled by widgets_values
-                    else:
-                        lite_inputs[input_name] = None
-
-        # Build outputs list
         lite_outputs = []
         if node_def and node_def.get("output_name"):
             lite_outputs = list(node_def["output_name"])
-        elif "outputs" in node:
-            # Legacy: extract output names from outputs array
-            lite_outputs = [out.get("name", "") for out in node.get("outputs", []) if out.get("name")]
         elif node_type in self.type_resolver.node_info:
             ni_data = self.type_resolver.node_info[node_type]
             lite_outputs = list(ni_data.get("output_name", []))
@@ -1122,79 +969,6 @@ class WorkflowLiteConverter:
             "outputs": lite_outputs,
             "index": node.get("id", 0)
         }
-
-    def _extract_parameters_with_names_legacy(
-        self,
-        node: Dict,
-        node_type: str,
-        input_connections: Dict
-    ) -> Dict[str, Any]:
-        """
-        Legacy: Extract parameters from widgets_values for old format nodes.
-
-        Args:
-            node: Node dictionary (old format)
-            node_type: Type of the node
-            input_connections: Mapping of connected inputs
-
-        Returns:
-            Dictionary mapping parameter names to values
-        """
-        inputs = node.get("inputs", [])
-        return self._extract_parameters_with_names(node, node_type, inputs, input_connections)
-
-    def _extract_parameters_with_names(
-        self,
-        node: Dict,
-        node_type: str,
-        inputs: List[Dict],
-        input_connections: Dict
-    ) -> Dict[str, Any]:
-        """
-        Extract parameters from widgets_values and map to actual input names.
-
-        Args:
-            node: Node dictionary
-            node_type: Type of the node
-            inputs: List of input definitions
-            input_connections: Mapping of connected inputs
-
-        Returns:
-            Dictionary mapping parameter names to values
-        """
-        widgets_values = node.get("widgets_values", [])
-        if not widgets_values:
-            return {}
-
-        # Use node_info if available
-        if node_type in self.type_resolver.node_info:
-            return self._extract_using_node_info(
-                node_type,
-                widgets_values,
-                input_connections
-            )
-
-        # Fallback: map widget values to input names
-        parameter_inputs = [
-            inp.get("name") for inp in inputs
-            if inp.get("widget") and inp.get("name") and inp.get("name") not in input_connections
-        ]
-
-        parameters = {}
-        for i, value in enumerate(widgets_values):
-            if i < len(parameter_inputs):
-                parameters[parameter_inputs[i]] = value
-            else:
-                # Use generic param_0, param_1, etc. for values without named inputs
-                parameters[f"param_{i}"] = value
-
-        # Special case: if no parameter inputs were found but widgets_values exist,
-        # preserve all widget values with generic names
-        if not parameter_inputs and widgets_values:
-            for i, value in enumerate(widgets_values):
-                parameters[f"param_{i}"] = value
-
-        return parameters
 
     def _extract_using_node_info(
         self,
@@ -1364,191 +1138,6 @@ class WorkflowLiteConverter:
             "data": data
         }
 
-    def _build_standard_inputs(
-        self,
-        node_type: str,
-        lite_inputs: Dict,
-        lite_outputs: List[str]
-    ) -> Tuple[List[Dict], List[Any]]:
-        """
-        Build standard format inputs array and widgets_values.
-
-        Args:
-            node_type: Node type
-            lite_inputs: Lite format inputs dict
-            lite_outputs: Lite format outputs list
-
-        Returns:
-            Tuple of (inputs_array, widgets_values)
-        """
-        inputs_array = []
-        widgets_values = []
-        param_order = self.type_resolver.get_parameter_order(node_type)
-
-        # Track connected inputs
-        connected_input_names = set()
-        for input_name, input_value in lite_inputs.items():
-            if isinstance(input_value, dict) and "node_id" in input_value:
-                connected_input_names.add(input_name)
-
-        # Build widgets_values
-        # Rules:
-        # 1. Include all required parameters (use default value if not in lite format)
-        # 2. Include optional parameters that exist in lite format and have links (use default value)
-        # 3. Order: First required, then optional. Within each category, widget-able types first, then non-widget types
-        #    Widget-able types: STRING, INT, FLOAT, BOOLEAN, COMBO, etc.
-        #    Non-widget types: MODEL, VAE, CLIP, CONDITIONING, LATENT, IMAGE, etc.
-        if param_order:
-            # Get required and optional parameter sets
-            required_params = {}
-            optional_params = {}
-            if self.type_resolver.node_info and node_type in self.type_resolver.node_info:
-                node_def = self.type_resolver.node_info[node_type]
-                input_defs = node_def.get("input", {})
-                if "required" in input_defs:
-                    required_params = input_defs["required"]
-                if "optional" in input_defs:
-                    optional_params = input_defs["optional"]
-            
-            # Helper function to check if a type is widget-able
-            def is_widgetable_type(param_type: str) -> bool:
-                """Check if parameter type is widget-able (primitive type)."""
-                widgetable_types = {"STRING", "INT", "FLOAT", "BOOLEAN", "COMBO"}
-                return param_type in widgetable_types
-            
-            # Helper function to get parameter type
-            def get_param_type(param_name: str, param_def: Any) -> str:
-                """Get parameter type from node_info definition."""
-                if isinstance(param_def, list) and len(param_def) > 0:
-                    first_elem = param_def[0]
-                    if isinstance(first_elem, str):
-                        return first_elem
-                    elif isinstance(first_elem, list):
-                        # COMBO type
-                        return "COMBO"
-                return "STRING"  # Default
-            
-            # Collect parameters that should be in widgets_values
-            # Maintain original order within required/optional, but group by widget-able vs non-widget
-            required_widgetable = []  # List of (param_name, param_type)
-            required_nonwidget = []    # List of (param_name, param_type)
-            optional_widgetable = []   # List of (param_name, param_type)
-            optional_nonwidget = []    # List of (param_name, param_type)
-            
-            # Process required parameters (maintain original order)
-            for param_name, param_def in required_params.items():
-                param_type = get_param_type(param_name, param_def)
-                if is_widgetable_type(param_type):
-                    required_widgetable.append((param_name, param_type))
-                else:
-                    required_nonwidget.append((param_name, param_type))
-            
-            # Process optional parameters that exist in lite format and have links (maintain original order)
-            for param_name, param_def in optional_params.items():
-                if param_name in lite_inputs:
-                    input_value = lite_inputs[param_name]
-                    # Only include if it's a connection (has link)
-                    if isinstance(input_value, dict) and "node_id" in input_value:
-                        param_type = get_param_type(param_name, param_def)
-                        if is_widgetable_type(param_type):
-                            optional_widgetable.append((param_name, param_type))
-                        else:
-                            optional_nonwidget.append((param_name, param_type))
-            
-            # Combine in correct order: required (widget-able, then non-widget), then optional (widget-able, then non-widget)
-            params_to_include = []
-            params_to_include.extend([(name, typ, True, True) for name, typ in required_widgetable])
-            params_to_include.extend([(name, typ, True, False) for name, typ in required_nonwidget])
-            params_to_include.extend([(name, typ, False, True) for name, typ in optional_widgetable])
-            params_to_include.extend([(name, typ, False, False) for name, typ in optional_nonwidget])
-            
-            # Build widgets_values in sorted order
-            for param_name, param_type, is_required, is_widgetable in params_to_include:
-                if param_name in lite_inputs:
-                    input_value = lite_inputs[param_name]
-                    if isinstance(input_value, dict) and "node_id" in input_value:
-                        # Connected input - use default value
-                        widget_value = self.type_resolver.get_default_value(node_type, param_name)
-                        widgets_values.append(widget_value if widget_value is not None else "")
-                    else:
-                        # Parameter value - use value from lite format
-                        widgets_values.append(input_value)
-                else:
-                    # Parameter not in lite format - use default value
-                    widget_value = self.type_resolver.get_default_value(node_type, param_name)
-                    widgets_values.append(widget_value if widget_value is not None else "")
-        else:
-            # Fallback: preserve all input values in order (for nodes without node_info)
-            # Sort by param_N names to maintain order
-            sorted_params = sorted(
-                [k for k in lite_inputs.keys() if k.startswith("param_")],
-                key=lambda x: int(x.split("_")[1]) if x.split("_")[1].isdigit() else 0
-            )
-            for param_name in sorted_params:
-                widgets_values.append(lite_inputs[param_name])
-
-            # Also include non-param values (non-connection inputs)
-            for input_name, input_value in lite_inputs.items():
-                if not input_name.startswith("param_") and not isinstance(input_value, dict):
-                    if input_name not in sorted_params:
-                        widgets_values.append(input_value)
-
-        # Build inputs array
-        # Rules:
-        # 1. All optional inputs that exist in lite format must be in inputs array (as connections or widgets)
-        # 2. All connected inputs must be in inputs array
-        # 3. All inputs with values (widgets) must be in inputs array
-        # 4. All optional inputs from node_info (with widgets) must be in inputs array
-        # 5. No special handling for param_type - follow node_info order
-        
-        # Get required and optional parameter sets
-        required_params = set()
-        optional_params = set()
-        if self.type_resolver.node_info and node_type in self.type_resolver.node_info:
-            node_def = self.type_resolver.node_info[node_type]
-            input_defs = node_def.get("input", {})
-            if "required" in input_defs:
-                required_params = set(input_defs["required"].keys())
-            if "optional" in input_defs:
-                optional_params = set(input_defs["optional"].keys())
-        
-        inputs_to_add = {}  # name -> input_dict
-        
-        # Step 1: Add only connected inputs to inputs array
-        # In PyroMind standard format:
-        # - Connected inputs (have link) -> appear in inputs array
-        # - Unconnected inputs (direct values) -> ONLY in widgets_values, NOT in inputs array
-        for input_name, input_value in lite_inputs.items():
-            if isinstance(input_value, dict) and "node_id" in input_value:
-                # Connection - must be in inputs array
-                input_type = self.type_resolver.get_input_type(node_type, input_name)
-                input_dict = {
-                    "name": input_name,
-                    "type": input_type,
-                    "link": None  # Will be filled later
-                }
-                # Add widget info for connected inputs
-                input_dict["widget"] = {"name": input_name}
-                inputs_to_add[input_name] = input_dict
-            # else: Unconnected inputs are NOT added to inputs array
-            # Their values are already stored in widgets_values
-
-        # Step 2: Build inputs_array in node_info order
-        # Only include connected inputs in inputs_array
-        # Follow node_info order, but only for inputs that are actually in inputs_array
-        if param_order:
-            # Add all inputs in node_info parameter order
-            # Only include those that are in inputs_to_add (i.e., should be in inputs_array)
-            for param_name in param_order:
-                if param_name in inputs_to_add:
-                    inputs_array.append(inputs_to_add[param_name])
-        else:
-            # Fallback: add all inputs in the order they were found
-            for input_dict in inputs_to_add.values():
-                inputs_array.append(input_dict)
-
-        return inputs_array, widgets_values
-
     def _build_xyflow_config(self, node_type: str, lite_inputs: Dict) -> Dict[str, Any]:
         """
         Build xyflow data.config dict from lite inputs.
@@ -1565,110 +1154,9 @@ class WorkflowLiteConverter:
         config = {}
         for param_name, param_value in lite_inputs.items():
             if isinstance(param_value, dict) and ("node_id" in param_value or "node" in param_value):
-                # Connection - not a direct value, skip
                 continue
             config[param_name] = param_value
         return config
-
-    def _build_standard_outputs(self, node_type: str, lite_outputs: List[str]) -> List[Dict]:
-        """
-        Build standard format outputs array.
-
-        Args:
-            node_type: Node type
-            lite_outputs: Lite format outputs list
-
-        Returns:
-            Standard format outputs array
-        """
-        outputs_array = []
-
-        # Get expected output names from node_info if available
-        expected_output_names = None
-        if node_type in self.type_resolver.node_info:
-            node_def = self.type_resolver.node_info[node_type]
-            output_names = node_def.get("output_name", [])
-            if output_names and len(output_names) >= len(lite_outputs):
-                expected_output_names = output_names
-
-        for idx, output_name in enumerate(lite_outputs):
-            # Use expected output name from node_info if available
-            actual_name = output_name
-            if expected_output_names and idx < len(expected_output_names):
-                actual_name = expected_output_names[idx]
-
-            output_type = self.type_resolver.get_output_type(node_type, idx, actual_name)
-            outputs_array.append({
-                "name": actual_name,
-                "type": output_type,
-                "links": []
-            })
-
-        return outputs_array
-
-    def _update_nodes_with_links(self, nodes: List[Dict], links: List[List], lite_nodes: Dict[str, Dict] = None) -> None:
-        """
-        Update nodes with link references.
-
-        Args:
-            nodes: List of node dictionaries (modified in place)
-            links: List of link arrays
-            lite_nodes: Lite format nodes to check which inputs are connections
-        """
-        # Build mappings
-        target_input_links = {}  # target_id -> {input_idx: link_id}
-        output_links_map = {}  # source_id -> {output_idx: [link_ids]}
-
-        for link in links:
-            if len(link) >= 6:
-                link_id, source_id, source_idx, target_id, target_idx, link_type = link[:6]
-
-                if target_id not in target_input_links:
-                    target_input_links[target_id] = {}
-                target_input_links[target_id][target_idx] = link_id
-
-                if source_id not in output_links_map:
-                    output_links_map[source_id] = {}
-                if source_idx not in output_links_map[source_id]:
-                    output_links_map[source_id][source_idx] = []
-                output_links_map[source_id][source_idx].append(link_id)
-
-        # Update nodes
-        for node in nodes:
-            node_id = node["id"]
-            node_name = self.node_mapper.get_name(node_id)
-
-            # Check which inputs are connections in lite format
-            connected_input_names = set()
-            if lite_nodes and node_name:
-                lite_node = lite_nodes.get(node_name, {})
-                lite_inputs = lite_node.get("inputs", {})
-                for input_name, input_value in lite_inputs.items():
-                    if isinstance(input_value, dict) and "node_id" in input_value:
-                        connected_input_names.add(input_name)
-
-            # Update input links
-            # Only set link for inputs that are actually connections in lite format
-            if node_id in target_input_links:
-                input_links = target_input_links[node_id]
-                for i, inp in enumerate(node["inputs"]):
-                    if i in input_links:
-                        input_name = inp.get("name")
-                        # Only set link if this input is a connection in lite format
-                        if input_name in connected_input_names:
-                            inp["link"] = input_links[i]
-                        # Otherwise, don't set the link (it's not a connection)
-
-            # Update output links
-            if node_id in output_links_map:
-                output_links = output_links_map[node_id]
-                for i, out in enumerate(node["outputs"]):
-                    if i in output_links:
-                        out["links"] = output_links[i]
-            else:
-                # No links from this node
-                for out in node["outputs"]:
-                    out["links"] = []
 
     def _generate_workflow_id(self, original_workflow: Optional[Dict], lite: Dict) -> str:
         """

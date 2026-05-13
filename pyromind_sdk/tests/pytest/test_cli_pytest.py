@@ -33,6 +33,8 @@ def test_cli_python_to_yaml_writes_output(tmp_path: Path) -> None:
     data = yaml.safe_load(out.read_text(encoding="utf-8"))
     assert data["name"] == "PythonCalculatorNode"
     assert data["function_name"] == "calculate"
+    assert data["description"]
+    assert data["base_class"] == "PodExecutionNode"
 
     params = data["parameters"]
     outputs = {p["name"]: p["dtype"] for p in params if p.get("type") == "output"}

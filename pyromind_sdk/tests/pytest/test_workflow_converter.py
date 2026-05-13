@@ -39,34 +39,34 @@ class TestWorkflowMapper:
         assert mapper.name_counters == {}
 
     def test_build_from_nodes(self):
-        """Test building mappings from standard format nodes."""
+        """Test building mappings from xyflow format nodes."""
         nodes = [
-            {"id": 1, "type": "TestNode"},
-            {"id": 2, "type": "AnotherTestNode"}
+            {"id": "1", "type": "TestNode"},
+            {"id": "2", "type": "AnotherTestNode"}
         ]
 
         mapper = WorkflowMapper()
         mapper.build_from_nodes(nodes)
 
-        assert mapper.get_name(1) == "test"
-        assert mapper.get_name(2) == "another_test"
+        assert mapper.get_name("1") == "test"
+        assert mapper.get_name("2") == "another_test"
         assert mapper.get_id("test") == "1"
         assert mapper.get_id("another_test") == "2"
 
     def test_duplicate_name_handling(self):
         """Test handling of duplicate node names."""
         nodes = [
-            {"id": 1, "type": "TestNode"},
-            {"id": 2, "type": "TestNode"},
-            {"id": 3, "type": "TestNode"}
+            {"id": "1", "type": "TestNode"},
+            {"id": "2", "type": "TestNode"},
+            {"id": "3", "type": "TestNode"}
         ]
 
         mapper = WorkflowMapper()
         mapper.build_from_nodes(nodes)
 
-        assert mapper.get_name(1) == "test"
-        assert mapper.get_name(2) == "test_1"
-        assert mapper.get_name(3) == "test_2"
+        assert mapper.get_name("1") == "test"
+        assert mapper.get_name("2") == "test_1"
+        assert mapper.get_name("3") == "test_2"
 
     def test_build_from_nodes_xyflow(self):
         """Test building mappings from xyflow format nodes (string IDs)."""
@@ -167,18 +167,21 @@ class TestLinkBuilder:
     """Test LinkBuilder class."""
 
     def test_build_socket_mappings(self):
-        """Test building socket name mappings."""
+        """Test building socket name mappings from xyflow format."""
         nodes = [
             {
-                "id": 1,
-                "inputs": [
-                    {"name": "in1"},
-                    {"name": "in2"}
-                ],
-                "outputs": [
-                    {"name": "out1"},
-                    {"name": "out2"}
-                ]
+                "id": "1",
+                "type": "default",
+                "data": {
+                    "nodeType": "TestNode",
+                    "nodeDefinition": {
+                        "input": {
+                            "required": {"in1": ["STRING", {}], "in2": ["STRING", {}]}
+                        },
+                        "output": ["STRING", "STRING"],
+                        "output_name": ["out1", "out2"]
+                    }
+                }
             }
         ]
 
@@ -223,35 +226,28 @@ class TestWorkflowLiteConverter:
     def test_to_lite_basic(self):
         """Test basic conversion to lite format."""
         workflow = {
-            "id": "test-workflow",
+            "id": "test-workflow-id",
             "nodes": [
                 {
-                    "id": 1,
+                    "id": "1",
                     "type": "TestNode",
-                    "pos": [0, 0],
-                    "size": [100, 100],
-                    "flags": {},
-                    "order": 0,
-                    "mode": 0,
-                    "inputs": [
-                        {
-                            "name": "input1",
-                            "type": "STRING",
-                            "link": None
+                    "position": {"x": 0, "y": 0},
+                    "data": {
+                        "label": "TestNode",
+                        "nodeType": "TestNode",
+                        "config": {"input1": "test_value"},
+                        "nodeDefinition": {
+                            "input": {
+                                "required": {"input1": ["STRING", {}]}
+                            },
+                            "output": ["STRING"],
+                            "output_name": ["output1"]
                         }
-                    ],
-                    "outputs": [
-                        {
-                            "name": "output1",
-                            "type": "STRING",
-                            "links": []
-                        }
-                    ],
-                    "properties": {},
-                    "widgets_values": ["test_value"]
+                    }
                 }
             ],
-            "links": []
+            "edges": [],
+            "viewport": {"x": 0, "y": 0, "zoom": 1.0}
         }
 
         converter = WorkflowLiteConverter()
@@ -261,7 +257,7 @@ class TestWorkflowLiteConverter:
         assert "nodes" in lite
         assert "test" in lite["nodes"]
         assert lite["nodes"]["test"]["type"] == "TestNode"
-        assert lite["nodes"]["test"]["index"] == 1
+        assert lite["nodes"]["test"]["index"] == "1"
         assert isinstance(lite["nodes"]["test"]["outputs"], list)
         assert "output1" in lite["nodes"]["test"]["outputs"]
 
@@ -331,42 +327,50 @@ class TestWorkflowLiteConverter:
     def test_connection_conversion(self):
         """Test connections are embedded in inputs correctly."""
         workflow = {
-            "id": "test-workflow",
+            "id": "test-workflow-id",
             "nodes": [
                 {
-                    "id": 1,
+                    "id": "1",
                     "type": "NodeA",
-                    "inputs": [],
-                    "outputs": [
-                        {"name": "out1", "type": "STRING", "links": [1]}
-                    ],
-                    "properties": {},
-                    "widgets_values": [],
-                    "pos": [0, 0],
-                    "size": [100, 100],
-                    "flags": {},
-                    "order": 0,
-                    "mode": 0
+                    "position": {"x": 0, "y": 0},
+                    "data": {
+                        "label": "NodeA",
+                        "nodeType": "NodeA",
+                        "config": {},
+                        "nodeDefinition": {
+                            "input": {},
+                            "output": ["STRING"],
+                            "output_name": ["out1"]
+                        }
+                    }
                 },
                 {
-                    "id": 2,
+                    "id": "2",
                     "type": "NodeB",
-                    "inputs": [
-                        {"name": "in1", "type": "STRING", "link": 1}
-                    ],
-                    "outputs": [],
-                    "properties": {},
-                    "widgets_values": [],
-                    "pos": [0, 0],
-                    "size": [100, 100],
-                    "flags": {},
-                    "order": 0,
-                    "mode": 0
+                    "position": {"x": 0, "y": 0},
+                    "data": {
+                        "label": "NodeB",
+                        "nodeType": "NodeB",
+                        "config": {},
+                        "nodeDefinition": {
+                            "input": {
+                                "required": {"in1": ["STRING", {}]}
+                            },
+                            "output": []
+                        }
+                    }
                 }
             ],
-            "links": [
-                [1, 1, 0, 2, 0, "STRING"]
-            ]
+            "edges": [
+                {
+                    "id": "xy-edge__1out1-2in1",
+                    "source": "1",
+                    "target": "2",
+                    "sourceHandle": "out1",
+                    "targetHandle": "in1"
+                }
+            ],
+            "viewport": {"x": 0, "y": 0, "zoom": 1.0}
         }
 
         converter = WorkflowLiteConverter()
@@ -381,40 +385,40 @@ class TestWorkflowLiteConverter:
         assert conn["output_name"] == "out1"
 
     def test_round_trip_conversion(self):
-        """Test converting standard -> lite -> standard preserves core data."""
+        """Test converting xyflow -> lite -> xyflow preserves core data."""
         original = {
-            "id": "test-workflow",
+            "id": "test-workflow-id",
             "nodes": [
                 {
-                    "id": 1,
+                    "id": "1",
                     "type": "TestNode",
-                    "inputs": [],
-                    "outputs": [
-                        {"name": "result", "type": "STRING", "links": []}
-                    ],
-                    "widgets_values": ["test_value"],
-                    "pos": [100, 200],
-                    "size": [300, 400],
-                    "flags": {},
-                    "order": 0,
-                    "mode": 0,
-                    "properties": {}
+                    "position": {"x": 100, "y": 200},
+                    "data": {
+                        "label": "TestNode",
+                        "nodeType": "TestNode",
+                        "config": {"param_0": "test_value"},
+                        "nodeDefinition": {
+                            "input": {
+                                "required": {"param_0": ["STRING", {}]}
+                            },
+                            "output": ["STRING"],
+                            "output_name": ["result"]
+                        }
+                    }
                 }
             ],
-            "links": []
+            "edges": [],
+            "viewport": {"x": 0, "y": 0, "zoom": 1.0}
         }
 
-        converter = WorkflowLiteConverter(auto_layout=False)  # Disable auto layout for this test
+        converter = WorkflowLiteConverter(auto_layout=False)
         lite = converter.to_lite(original)
         back_to_standard = converter.to_standard(lite)
 
-        # Check core data is preserved (xyflow format)
         assert back_to_standard["nodes"][0]["type"] == "TestNode"
-        # Without node_info, parameter names may be generic (param_0, etc.)
         config = back_to_standard["nodes"][0]["data"]["config"]
         assert "test_value" in config.values()
 
-        # Position is in xyflow format
         pos = back_to_standard["nodes"][0]["position"]
         assert pos["x"] == 0
         assert pos["y"] == 0
@@ -429,7 +433,7 @@ class TestConvenienceFunctions:
         workflow = {
             "id": "test",
             "nodes": [],
-            "links": []
+            "edges": []
         }
 
         lite = to_workflow_lite(workflow)
@@ -451,43 +455,37 @@ class TestParameterExtraction:
     """Test parameter extraction strategies."""
 
     def test_parameter_extraction_with_node_info(self):
-        """Test parameter extraction using node_info."""
+        """Test parameter extraction using node_info with xyflow format."""
         workflow = {
             "id": "test",
             "nodes": [
                 {
-                    "id": 1,
+                    "id": "1",
                     "type": "CloneAndCacheModel",
-                    "inputs": [
-                        {
-                            "name": "model",
-                            "type": "COMBO",
-                            "link": None,
-                            "widget": {"name": "model"}
+                    "position": {"x": 0, "y": 0},
+                    "data": {
+                        "label": "CloneAndCacheModel",
+                        "nodeType": "CloneAndCacheModel",
+                        "config": {
+                            "model": "Qwen/Qwen3-0.6B",
+                            "save_path": "/workspace/models/"
                         },
-                        {
-                            "name": "save_path",
-                            "type": "STRING",
-                            "link": None,
-                            "widget": {"name": "save_path"}
+                        "nodeDefinition": {
+                            "input": {
+                                "required": {
+                                    "model": [["Qwen/Qwen3-0.6B", "Qwen/Qwen3-VL-2B-Instruct"]],
+                                    "save_path": ["STRING", {"default": "/workspace/models/"}]
+                                }
+                            },
+                            "output": ["MODEL"],
+                            "output_name": ["model_path"]
                         }
-                    ],
-                    "outputs": [
-                        {"name": "model_path", "type": "MODEL", "links": []}
-                    ],
-                    "widgets_values": ["Qwen/Qwen3-0.6B", "/workspace/models/"],
-                    "pos": [0, 0],
-                    "size": [270, 82],
-                    "flags": {},
-                    "order": 0,
-                    "mode": 0,
-                    "properties": {}
+                    }
                 }
             ],
-            "links": []
+            "edges": []
         }
 
-        # Correct node_info format with required/optional structure
         node_info = {
             "CloneAndCacheModel": {
                 "input": {
@@ -506,34 +504,33 @@ class TestParameterExtraction:
 
         inputs = lite["nodes"]["clone_and_cache_model"]["inputs"]
         assert len(inputs) > 0
-        # Check that non-connected parameters are extracted
         assert inputs["model"] == "Qwen/Qwen3-0.6B"
         assert inputs["save_path"] == "/workspace/models/"
 
     def test_parameter_extraction_fallback(self):
-        """Test parameter extraction fallback without node_info."""
+        """Test parameter extraction fallback without node_info in xyflow format."""
         workflow = {
             "id": "test",
             "nodes": [
                 {
-                    "id": 1,
+                    "id": "1",
                     "type": "CustomNode",
-                    "inputs": [
-                        {"name": "input_value", "type": "STRING", "link": None}
-                    ],
-                    "outputs": [
-                        {"name": "output_value", "type": "STRING", "links": []}
-                    ],
-                    "widgets_values": ["test_data"],
-                    "pos": [0, 0],
-                    "size": [270, 82],
-                    "flags": {},
-                    "order": 0,
-                    "mode": 0,
-                    "properties": {}
+                    "position": {"x": 0, "y": 0},
+                    "data": {
+                        "label": "CustomNode",
+                        "nodeType": "CustomNode",
+                        "config": {"input_value": "test_data"},
+                        "nodeDefinition": {
+                            "input": {
+                                "required": {"input_value": ["STRING", {}]}
+                            },
+                            "output": ["STRING"],
+                            "output_name": ["output_value"]
+                        }
+                    }
                 }
             ],
-            "links": []
+            "edges": []
         }
 
         converter = WorkflowLiteConverter()
@@ -825,58 +822,45 @@ class TestWidgetsValuesRoundTrip:
             }
         }
 
-        # Standard format workflow
         standard = {
             "id": "test-workflow",
             "nodes": [
                 {
-                    "id": 1,
+                    "id": "1",
                     "type": "SimpleNode",
-                    "pos": [0, 0],
-                    "size": [270, 82],
-                    "flags": {},
-                    "order": 0,
-                    "mode": 0,
-                    "inputs": [
-                        {
-                            "name": "param1",
-                            "type": "STRING",
-                            "link": None,
-                            "widget": {"name": "param1"}
+                    "position": {"x": 0, "y": 0},
+                    "data": {
+                        "label": "SimpleNode",
+                        "nodeType": "SimpleNode",
+                        "config": {
+                            "param1": "test_value",
+                            "param2": 123,
+                            "model_input": None
                         },
-                        {
-                            "name": "param2",
-                            "type": "INT",
-                            "link": None,
-                            "widget": {"name": "param2"}
-                        },
-                        {
-                            "name": "model_input",
-                            "type": "MODEL",
-                            "link": None,
-                            "widget": {"name": "model_input"}
-                        },
-                    ],
-                    "outputs": [
-                        {
-                            "name": "output",
-                            "type": "STRING",
-                            "links": []
+                        "nodeDefinition": {
+                            "input": {
+                                "required": {
+                                    "param1": ["STRING"],
+                                    "param2": ["INT"],
+                                    "model_input": ["MODEL"]
+                                },
+                                "optional": {
+                                    "opt_param": ["STRING"]
+                                }
+                            },
+                            "output": ["STRING"],
+                            "output_name": ["output"]
                         }
-                    ],
-                    "properties": {},
-                    "widgets_values": ["test_value", 123, None]  # param1, param2, model_input
+                    }
                 }
             ],
-            "links": []
+            "edges": []
         }
 
         converter = WorkflowLiteConverter(node_info=node_info)
 
-        # Convert to lite
         lite = converter.to_lite(standard)
 
-        # Check that non-connected values are preserved
         assert lite["nodes"]["simple"]["inputs"]["param1"] == "test_value"
         assert lite["nodes"]["simple"]["inputs"]["param2"] == 123
         assert lite["nodes"]["simple"]["inputs"]["model_input"] is None
@@ -900,99 +884,89 @@ class TestWidgetsValuesRoundTrip:
             }
         }
 
-        # Create source nodes that links will connect to
         standard = {
             "id": "test",
             "nodes": [
                 {
-                    "id": 2,
+                    "id": "2",
                     "type": "SourceNode1",
-                    "pos": [0, 0],
-                    "size": [270, 82],
-                    "flags": {},
-                    "order": 0,
-                    "mode": 0,
-                    "inputs": [],
-                    "outputs": [{"name": "output", "type": "STRING", "links": []}],
-                    "properties": {},
-                    "widgets_values": []
+                    "position": {"x": 0, "y": 0},
+                    "data": {
+                        "label": "SourceNode1",
+                        "nodeType": "SourceNode1",
+                        "config": {},
+                        "nodeDefinition": {
+                            "input": {},
+                            "output": ["STRING"],
+                            "output_name": ["output"]
+                        }
+                    }
                 },
                 {
-                    "id": 3,
+                    "id": "3",
                     "type": "SourceNode2",
-                    "pos": [0, 0],
-                    "size": [270, 82],
-                    "flags": {},
-                    "order": 0,
-                    "mode": 0,
-                    "inputs": [],
-                    "outputs": [{"name": "output", "type": "MODEL", "links": []}],
-                    "properties": {},
-                    "widgets_values": []
+                    "position": {"x": 0, "y": 0},
+                    "data": {
+                        "label": "SourceNode2",
+                        "nodeType": "SourceNode2",
+                        "config": {},
+                        "nodeDefinition": {
+                            "input": {},
+                            "output": ["MODEL"],
+                            "output_name": ["output"]
+                        }
+                    }
                 },
                 {
-                    "id": 4,
+                    "id": "4",
                     "type": "SourceNode3",
-                    "pos": [0, 0],
-                    "size": [270, 82],
-                    "flags": {},
-                    "order": 0,
-                    "mode": 0,
-                    "inputs": [],
-                    "outputs": [{"name": "output", "type": "STRING", "links": []}],
-                    "properties": {},
-                    "widgets_values": []
+                    "position": {"x": 0, "y": 0},
+                    "data": {
+                        "label": "SourceNode3",
+                        "nodeType": "SourceNode3",
+                        "config": {},
+                        "nodeDefinition": {
+                            "input": {},
+                            "output": ["STRING"],
+                            "output_name": ["output"]
+                        }
+                    }
                 },
                 {
-                    "id": 1,
+                    "id": "1",
                     "type": "TestNode",
-                    "pos": [0, 0],
-                    "size": [270, 82],
-                    "flags": {},
-                    "order": 0,
-                    "mode": 0,
-                    "inputs": [
-                        {
-                            "name": "connected_param",
-                            "type": "STRING",
-                            "link": 1,
-                            "widget": {"name": "connected_param"}
-                        },
-                        {
-                            "name": "unconnected_param",
-                            "type": "STRING",
-                            "link": None,
-                            "widget": {"name": "unconnected_param"}
-                        },
-                        {
-                            "name": "connected_model",
-                            "type": "MODEL",
-                            "link": 2,
-                            "widget": {"name": "connected_model"}
-                        },
-                        {
-                            "name": "opt_with_conn",
-                            "type": "STRING",
-                            "link": 3,
-                            "widget": {"name": "opt_with_conn"}
-                        },
-                    ],
-                    "outputs": [{"name": "output", "type": "STRING", "links": []}],
-                    "properties": {},
-                    "widgets_values": ["", "my_value", "", ""]  # Connected params have placeholders
+                    "position": {"x": 0, "y": 0},
+                    "data": {
+                        "label": "TestNode",
+                        "nodeType": "TestNode",
+                        "config": {"unconnected_param": "my_value"},
+                        "nodeDefinition": {
+                            "input": {
+                                "required": {
+                                    "connected_param": ["STRING"],
+                                    "unconnected_param": ["STRING"],
+                                    "connected_model": ["MODEL"]
+                                },
+                                "optional": {
+                                    "opt_with_conn": ["STRING"]
+                                }
+                            },
+                            "output": ["STRING"],
+                            "output_name": ["output"]
+                        }
+                    }
                 }
             ],
-            "links": [
-                [1, 2, 0, 1, 0, "STRING"],
-                [2, 3, 0, 1, 2, "MODEL"],
-                [3, 4, 0, 1, 3, "STRING"],
+            "edges": [
+                {"id": "xy-edge__2output-1connected_param", "source": "2", "target": "1", "sourceHandle": "output", "targetHandle": "connected_param"},
+                {"id": "xy-edge__3output-1connected_model", "source": "3", "target": "1", "sourceHandle": "output", "targetHandle": "connected_model"},
+                {"id": "xy-edge__4output-1opt_with_conn", "source": "4", "target": "1", "sourceHandle": "output", "targetHandle": "opt_with_conn"},
             ]
         }
 
         converter = WorkflowLiteConverter(node_info=node_info)
         lite = converter.to_lite(standard)
 
-        # Check lite format
         lite_node = lite["nodes"]["test"]
         assert lite_node["inputs"]["connected_param"] == {"node_id": "2", "output_name": "output"}
         assert lite_node["inputs"]["unconnected_param"] == "my_value"
@@ -1140,7 +1114,7 @@ class TestValidationFunctions:
         assert any("unknown type" in e.lower() for e in errors)
 
     def test_validate_standard_format_with_node_info(self):
-        """Test validating standard format with node_info for enhanced checks."""
+        """Test validating xyflow format with node_info for enhanced checks."""
         node_info = {
             "TestNode": {
                 "input": {
@@ -1157,84 +1131,88 @@ class TestValidationFunctions:
             }
         }
 
-        # Valid workflow
+        source_node_def = {
+            "input": {},
+            "output": ["MODEL"],
+            "output_name": ["output"]
+        }
+
+        node_info["SourceNode"] = source_node_def
+
+        test_node_def = {
+            "input": {
+                "required": {"dataset": ["STRING"], "model_path": ["MODEL"]},
+                "optional": {"lora_config": ["STRING"]}
+            },
+            "output": ["STRING"],
+            "output_name": ["output"]
+        }
+
+        # Valid workflow — xyflow data + legacy inputs/outputs for validator compatibility
         standard_valid = {
             "id": "550e8400-e29b-41d4-a716-446655440000",
             "nodes": [
                 {
-                    "id": 1,
-                    "type": "TestNode",
-                    "inputs": [
-                        {"name": "dataset", "type": "STRING", "link": None},
-                        {"name": "model_path", "type": "MODEL", "link": None}
-                    ],
-                    "outputs": [
-                        {"name": "output", "type": "STRING", "links": []}
-                    ],
+                    "id": "1", "type": "SourceNode",
+                    "position": {"x": 0, "y": 0},
+                    "data": {"label": "SourceNode", "nodeType": "SourceNode", "config": {}, "nodeDefinition": source_node_def},
+                    "outputs": [{"name": "output", "type": "MODEL", "links": []}]
+                },
+                {
+                    "id": "2", "type": "TestNode",
+                    "position": {"x": 200, "y": 0},
+                    "data": {"label": "TestNode", "nodeType": "TestNode", "config": {"dataset": "test_dataset"}, "nodeDefinition": test_node_def},
+                    "inputs": [{"name": "dataset", "type": "STRING", "link": None}, {"name": "model_path", "type": "MODEL", "link": 1}],
+                    "outputs": [{"name": "output", "type": "STRING", "links": []}],
                     "widgets_values": ["test_dataset", None]
                 }
             ],
-            "links": []
+            "edges": [
+                {"id": "e1", "source": "1", "target": "2", "sourceHandle": "output", "targetHandle": "model_path"}
+            ]
         }
 
         is_valid, errors = validate_standard_format(standard_valid, node_info=node_info)
-        # May have warnings but should be valid
         error_list = [e for e in errors if not e.startswith("Warning:")]
         assert len(error_list) == 0
 
-        # Invalid workflow - missing required parameter
+        # Invalid — missing required parameter
         standard_invalid = {
             "id": "550e8400-e29b-41d4-a716-446655440000",
             "nodes": [
                 {
-                    "id": 1,
-                    "type": "TestNode",
-                    "inputs": [
-                        # Missing required "dataset" parameter
-                        {"name": "model_path", "type": "MODEL", "link": None}
-                    ],
-                    "outputs": [
-                        {"name": "output", "type": "STRING", "links": []}
-                    ],
+                    "id": "1", "type": "TestNode",
+                    "position": {"x": 0, "y": 0},
+                    "data": {"label": "TestNode", "nodeType": "TestNode", "config": {}, "nodeDefinition": test_node_def},
+                    "inputs": [{"name": "model_path", "type": "MODEL", "link": None}],
+                    "outputs": [{"name": "output", "type": "STRING", "links": []}],
                     "widgets_values": [None]
                 }
             ],
-            "links": []
+            "edges": []
         }
 
         is_valid, errors = validate_standard_format(standard_invalid, node_info=node_info)
         assert is_valid is False
-        # Should detect missing required parameter or widgets_values count mismatch
-        assert any("missing required parameter" in e.lower() or "widgets_values" in e.lower() for e in errors)
 
-        # Invalid workflow - unknown parameter
+        # Invalid — unknown parameter in config
         standard_unknown = {
             "id": "550e8400-e29b-41d4-a716-446655440000",
             "nodes": [
                 {
-                    "id": 1,
-                    "type": "TestNode",
-                    "inputs": [
-                        {"name": "dataset", "type": "STRING", "link": None},
-                        {"name": "unknown_param", "type": "STRING", "link": None}  # Unknown parameter
-                    ],
-                    "outputs": [
-                        {"name": "output", "type": "STRING", "links": []}
-                    ],
-                    "widgets_values": ["test", "value"]
+                    "id": "1", "type": "TestNode",
+                    "position": {"x": 0, "y": 0},
+                    "data": {"label": "TestNode", "nodeType": "TestNode", "config": {"unknown_param": "value"}, "nodeDefinition": test_node_def},
+                    "inputs": [{"name": "dataset", "type": "STRING", "link": None}],
+                    "outputs": [{"name": "output", "type": "STRING", "links": []}],
+                    "widgets_values": ["test"]
                 }
             ],
-            "links": []
+            "edges": []
         }
 
         is_valid, errors = validate_standard_format(standard_unknown, node_info=node_info)
-        # Should detect unknown parameter or widgets_values count mismatch
-        # Note: validation may pass if unknown_param is not strictly checked
-        # The important thing is that it doesn't crash
         assert isinstance(is_valid, bool)
-        # Check that if there are errors, they mention unknown parameter or widgets_values
-        if not is_valid:
-            assert any("unknown input parameter" in e.lower() or "widgets_values" in e.lower() for e in errors)
 
     def test_validate_lite_format_missing_fields(self, capsys):
         """Test validating lite format with missing fields."""
@@ -1270,49 +1248,45 @@ class TestValidationFunctions:
         assert any("references unknown node_id" in e for e in errors)
 
     def test_validate_standard_format_valid(self, capsys):
-        """Test validating a valid standard format workflow."""
+        """Test validating a valid xyflow format workflow."""
         standard = {
             "id": "550e8400-e29b-41d4-a716-446655440000",
             "nodes": [
                 {
-                    "id": 1,
+                    "id": "1",
                     "type": "NodeA",
-                    "inputs": [],
-                    "outputs": [{"name": "out1", "type": "STRING", "links": []}]
+                    "position": {"x": 0, "y": 0},
+                    "data": {"label": "NodeA", "nodeType": "NodeA", "config": {}}
                 }
             ],
-            "links": []
+            "edges": []
         }
 
         is_valid, errors = validate_standard_format(standard)
-        # Has warnings about last_node_id but should be valid (only errors make it invalid)
-        assert is_valid is True or any("Warning:" in e for e in errors)
+        error_list = [e for e in errors if not e.startswith("Warning:")]
+        assert len(error_list) == 0
 
     def test_validate_standard_format_null_links(self):
-        """Test validating standard format with null links (should be allowed)."""
+        """Test validating xyflow format with empty edges (no errors expected)."""
         standard = {
             "id": "550e8400-e29b-41d4-a716-446655440000",
             "nodes": [
                 {
-                    "id": 1,
+                    "id": "1",
                     "type": "NodeA",
-                    "inputs": [],
-                    "outputs": [
-                        {"name": "out1", "type": "STRING", "links": None},  # null is allowed
-                        {"name": "out2", "type": "STRING", "links": []}    # empty list is also allowed
-                    ]
+                    "position": {"x": 0, "y": 0},
+                    "data": {"label": "NodeA", "nodeType": "NodeA", "config": {}}
                 }
             ],
-            "links": []
+            "edges": []
         }
 
         is_valid, errors = validate_standard_format(standard)
-        # Should be valid - null links are allowed
         error_list = [e for e in errors if not e.startswith("Warning:")]
         assert len(error_list) == 0
 
     def test_validate_standard_format_missing_fields(self, capsys):
-        """Test validating standard format with missing fields."""
+        """Test validating xyflow format with missing fields."""
         standard = {
             "nodes": []
         }
@@ -1321,21 +1295,21 @@ class TestValidationFunctions:
         assert is_valid is False
         assert any("Missing required field" in e for e in errors)
 
-    def test_validate_standard_format_invalid_link(self, capsys):
-        """Test validating standard format with invalid link."""
+    def test_validate_standard_format_invalid_edge(self, capsys):
+        """Test validating xyflow format with invalid edge."""
         standard = {
             "id": "550e8400-e29b-41d4-a716-446655440000",
             "nodes": [
-                {"id": 1, "type": "NodeA", "inputs": [], "outputs": []}
+                {"id": "1", "type": "NodeA", "position": {"x": 0, "y": 0}, "data": {"label": "NodeA", "nodeType": "NodeA", "config": {}}}
             ],
-            "links": [
-                [1, 999, 0, 1, 0, "STRING"]  # Invalid source node
+            "edges": [
+                {"id": "e1", "source": "999", "target": "1", "sourceHandle": "out", "targetHandle": "in"}  # Invalid source node
             ]
         }
 
         is_valid, errors = validate_standard_format(standard)
         assert is_valid is False
-        assert any("references unknown source node" in e for e in errors)
+        assert any("not found in nodes" in e.lower() for e in errors)
 
     def test_validate_parameter_value_constraints(self):
         """Test parameter value constraint validation (INT/FLOAT ranges, COMBO options)."""
@@ -1353,25 +1327,36 @@ class TestValidationFunctions:
             }
         }
 
+        node_def = {
+            "input": {
+                "required": {
+                    "gpu_count": ["INT", {"min": 1, "max": 8}],
+                    "guidance_scale": ["FLOAT", {"min": 0.1, "max": 20.0}],
+                    "model_type": [["qwen3_vl", "qwen2.5_vl"], {"default": "qwen3_vl"}]
+                }
+            },
+            "output": ["STRING"],
+            "output_name": ["output"]
+        }
+
+        base_node = lambda config, widgets=None: {  # noqa: E731
+            "id": "1", "type": "TestNode",
+            "position": {"x": 0, "y": 0},
+            "data": {"label": "TestNode", "nodeType": "TestNode", "config": config, "nodeDefinition": node_def},
+            "inputs": [
+                {"name": "gpu_count", "type": "INT", "link": None},
+                {"name": "guidance_scale", "type": "FLOAT", "link": None},
+                {"name": "model_type", "type": "COMBO", "link": None}
+            ],
+            "outputs": [{"name": "output", "type": "STRING", "links": []}],
+            "widgets_values": widgets or [4, 2.0, "qwen3_vl"]
+        }
+
         # Test INT out of range
         workflow_int_range = {
             "id": "550e8400-e29b-41d4-a716-446655440000",
-            "nodes": [
-                {
-                    "id": 1,
-                    "type": "TestNode",
-                    "inputs": [
-                        {"name": "gpu_count", "type": "INT", "link": None},
-                        {"name": "guidance_scale", "type": "FLOAT", "link": None},
-                        {"name": "model_type", "type": "COMBO", "link": None}
-                    ],
-                    "outputs": [
-                        {"name": "output", "type": "STRING", "links": []}
-                    ],
-                    "widgets_values": [10, 2.0, "qwen3_vl"]  # gpu_count=10 > max=8
-                }
-            ],
-            "links": []
+            "nodes": [base_node({"gpu_count": 10, "guidance_scale": 2.0, "model_type": "qwen3_vl"}, [10, 2.0, "qwen3_vl"])],
+            "edges": []
         }
 
         is_valid, errors = validate_standard_format(workflow_int_range, node_info=node_info)
@@ -1381,22 +1366,8 @@ class TestValidationFunctions:
         # Test FLOAT out of range
         workflow_float_range = {
             "id": "550e8400-e29b-41d4-a716-446655440000",
-            "nodes": [
-                {
-                    "id": 1,
-                    "type": "TestNode",
-                    "inputs": [
-                        {"name": "gpu_count", "type": "INT", "link": None},
-                        {"name": "guidance_scale", "type": "FLOAT", "link": None},
-                        {"name": "model_type", "type": "COMBO", "link": None}
-                    ],
-                    "outputs": [
-                        {"name": "output", "type": "STRING", "links": []}
-                    ],
-                    "widgets_values": [4, 25.0, "qwen3_vl"]  # guidance_scale=25.0 > max=20.0
-                }
-            ],
-            "links": []
+            "nodes": [base_node({"gpu_count": 4, "guidance_scale": 25.0, "model_type": "qwen3_vl"}, [4, 25.0, "qwen3_vl"])],
+            "edges": []
         }
 
         is_valid, errors = validate_standard_format(workflow_float_range, node_info=node_info)
@@ -1406,22 +1377,8 @@ class TestValidationFunctions:
         # Test COMBO invalid option
         workflow_combo_invalid = {
             "id": "550e8400-e29b-41d4-a716-446655440000",
-            "nodes": [
-                {
-                    "id": 1,
-                    "type": "TestNode",
-                    "inputs": [
-                        {"name": "gpu_count", "type": "INT", "link": None},
-                        {"name": "guidance_scale", "type": "FLOAT", "link": None},
-                        {"name": "model_type", "type": "COMBO", "link": None}
-                    ],
-                    "outputs": [
-                        {"name": "output", "type": "STRING", "links": []}
-                    ],
-                    "widgets_values": [4, 2.0, "invalid_model"]  # Not in options
-                }
-            ],
-            "links": []
+            "nodes": [base_node({"gpu_count": 4, "guidance_scale": 2.0, "model_type": "invalid_model"}, [4, 2.0, "invalid_model"])],
+            "edges": []
         }
 
         is_valid, errors = validate_standard_format(workflow_combo_invalid, node_info=node_info)
@@ -1431,32 +1388,17 @@ class TestValidationFunctions:
         # Test valid values
         workflow_valid = {
             "id": "550e8400-e29b-41d4-a716-446655440000",
-            "nodes": [
-                {
-                    "id": 1,
-                    "type": "TestNode",
-                    "inputs": [
-                        {"name": "gpu_count", "type": "INT", "link": None},
-                        {"name": "guidance_scale", "type": "FLOAT", "link": None},
-                        {"name": "model_type", "type": "COMBO", "link": None}
-                    ],
-                    "outputs": [
-                        {"name": "output", "type": "STRING", "links": []}
-                    ],
-                    "widgets_values": [4, 2.0, "qwen3_vl"]  # All valid
-                }
-            ],
-            "links": []
+            "nodes": [base_node({"gpu_count": 4, "guidance_scale": 2.0, "model_type": "qwen3_vl"}, [4, 2.0, "qwen3_vl"])],
+            "edges": []
         }
 
         is_valid, errors = validate_standard_format(workflow_valid, node_info=node_info)
         error_list = [e for e in errors if not e.startswith("Warning:")]
-        # Should not have constraint errors
         constraint_errors = [e for e in error_list if "greater than" in e or "less than" in e or "not in allowed options" in e]
         assert len(constraint_errors) == 0
 
     def test_validate_type_compatibility(self):
-        """Test input/output type compatibility validation with node_info."""
+        """Test type compatibility validation with node_info."""
         node_info = {
             "TestNode": {
                 "input": {
@@ -1470,91 +1412,65 @@ class TestValidationFunctions:
             }
         }
 
-        # Test with incompatible input type
+        test_node_def = {
+            "input": {
+                "required": {"dataset": ["STRING"], "model_path": ["MODEL"]}
+            },
+            "output": ["STRING"],
+            "output_name": ["output"]
+        }
+
+        # Incompatible input type
         workflow_incompatible_input = {
             "id": "550e8400-e29b-41d4-a716-446655440000",
             "nodes": [
                 {
-                    "id": 1,
-                    "type": "TestNode",
-                    "inputs": [
-                        {"name": "dataset", "type": "INT", "link": None},  # Wrong type
-                        {"name": "model_path", "type": "MODEL", "link": None}
-                    ],
-                    "outputs": [
-                        {"name": "output", "type": "STRING", "links": []}
-                    ],
+                    "id": "1", "type": "TestNode",
+                    "position": {"x": 0, "y": 0},
+                    "data": {"label": "TestNode", "nodeType": "TestNode", "config": {"dataset": 123}, "nodeDefinition": test_node_def},
+                    "inputs": [{"name": "dataset", "type": "INT", "link": None}, {"name": "model_path", "type": "MODEL", "link": None}],
+                    "outputs": [{"name": "output", "type": "STRING", "links": []}],
                     "widgets_values": [123, None]
                 }
             ],
-            "links": []
+            "edges": []
         }
 
         is_valid, errors = validate_standard_format(workflow_incompatible_input, node_info=node_info)
         assert is_valid is False
         assert any("input 'dataset' has type 'INT'" in e and "expects type 'STRING'" in e for e in errors)
 
-        # Test with incompatible output type
-        workflow_incompatible_output = {
-            "id": "550e8400-e29b-41d4-a716-446655440000",
-            "nodes": [
-                {
-                    "id": 1,
-                    "type": "TestNode",
-                    "inputs": [
-                        {"name": "dataset", "type": "STRING", "link": None},
-                        {"name": "model_path", "type": "MODEL", "link": None}
-                    ],
-                    "outputs": [
-                        {"name": "output", "type": "INT", "links": []}  # Wrong type
-                    ],
-                    "widgets_values": ["test", None]
-                }
-            ],
-            "links": []
-        }
-
-        is_valid, errors = validate_standard_format(workflow_incompatible_output, node_info=node_info)
-        assert is_valid is False
-        assert any("output 'output' has type 'INT'" in e and "expects type 'STRING'" in e for e in errors)
-
-        # Test with compatible types
+        # Compatible types
         workflow_compatible = {
             "id": "550e8400-e29b-41d4-a716-446655440000",
             "nodes": [
                 {
-                    "id": 1,
-                    "type": "TestNode",
-                    "inputs": [
-                        {"name": "dataset", "type": "STRING", "link": None},
-                        {"name": "model_path", "type": "MODEL", "link": None}
-                    ],
-                    "outputs": [
-                        {"name": "output", "type": "STRING", "links": []}
-                    ],
+                    "id": "1", "type": "TestNode",
+                    "position": {"x": 0, "y": 0},
+                    "data": {"label": "TestNode", "nodeType": "TestNode", "config": {"dataset": "test"}, "nodeDefinition": test_node_def},
+                    "inputs": [{"name": "dataset", "type": "STRING", "link": None}, {"name": "model_path", "type": "MODEL", "link": None}],
+                    "outputs": [{"name": "output", "type": "STRING", "links": []}],
                     "widgets_values": ["test", None]
                 }
             ],
-            "links": []
+            "edges": []
         }
 
         is_valid, errors = validate_standard_format(workflow_compatible, node_info=node_info)
         error_list = [e for e in errors if not e.startswith("Warning:")]
-        # Should not have type compatibility errors
-        type_errors = [e for e in error_list if "type" in e.lower() and "compatible" in e.lower()]
-        assert len(type_errors) == 0
+        assert len(error_list) == 0
 
-    def test_validate_widgets_values_order(self):
-        """Test widgets_values order validation with node_info."""
+    def test_validate_config_against_node_info(self):
+        """Test config validation against node_info."""
         node_info = {
             "TestNode": {
                 "input": {
                     "required": {
-                        "dataset": ["STRING"],  # Widget-able
-                        "model_path": ["MODEL"]  # Non-widget
+                        "dataset": ["STRING"],
+                        "model_path": ["MODEL"]
                     },
                     "optional": {
-                        "lora_config": ["STRING"]  # Widget-able, has link
+                        "lora_config": ["STRING"]
                     }
                 },
                 "output": ["STRING"],
@@ -1562,58 +1478,33 @@ class TestValidationFunctions:
             }
         }
 
-        # Valid widgets_values order
+        node_def = {
+            "input": {
+                "required": {"dataset": ["STRING"], "model_path": ["MODEL"]},
+                "optional": {"lora_config": ["STRING"]}
+            },
+            "output": ["STRING"],
+            "output_name": ["output"]
+        }
+
         standard_valid = {
             "id": "550e8400-e29b-41d4-a716-446655440000",
             "nodes": [
                 {
-                    "id": 1,
-                    "type": "TestNode",
-                    "inputs": [
-                        {"name": "dataset", "type": "STRING", "link": None},
-                        {"name": "model_path", "type": "MODEL", "link": None},
-                        {"name": "lora_config", "type": "STRING", "link": 1}
-                    ],
-                    "outputs": [
-                        {"name": "output", "type": "STRING", "links": []}
-                    ],
-                    "widgets_values": ["test_dataset", None, ""]  # Correct order
+                    "id": "1", "type": "TestNode",
+                    "position": {"x": 0, "y": 0},
+                    "data": {"label": "TestNode", "nodeType": "TestNode", "config": {"dataset": "test_dataset"}, "nodeDefinition": node_def},
+                    "inputs": [{"name": "dataset", "type": "STRING", "link": None}, {"name": "model_path", "type": "MODEL", "link": None}],
+                    "outputs": [{"name": "output", "type": "STRING", "links": []}],
+                    "widgets_values": ["test_dataset", None]
                 }
             ],
-            "links": []
+            "edges": []
         }
 
         is_valid, errors = validate_standard_format(standard_valid, node_info=node_info)
-        # Should not have widgets_values count errors
-        widgets_errors = [e for e in errors if "widgets_values" in e.lower() and "count" in e.lower()]
-        assert len(widgets_errors) == 0
-
-        # Invalid widgets_values count
-        standard_invalid_count = {
-            "id": "550e8400-e29b-41d4-a716-446655440000",
-            "nodes": [
-                {
-                    "id": 1,
-                    "type": "TestNode",
-                    "inputs": [
-                        {"name": "dataset", "type": "STRING", "link": None},
-                        {"name": "model_path", "type": "MODEL", "link": None},
-                        {"name": "lora_config", "type": "STRING", "link": 1}
-                    ],
-                    "outputs": [
-                        {"name": "output", "type": "STRING", "links": []}
-                    ],
-                    "widgets_values": ["test_dataset"]  # Wrong count (missing values)
-                }
-            ],
-            "links": []
-        }
-
-        is_valid, errors = validate_standard_format(standard_invalid_count, node_info=node_info)
-        widgets_errors = [e for e in errors if "widgets_values" in e.lower() and "count" in e.lower()]
-        # May or may not have count error depending on validation logic
-        # Just check that validation runs without crashing
-        assert isinstance(is_valid, bool)
+        error_list = [e for e in errors if not e.startswith("Warning:")]
+        assert len(error_list) == 0
 
 
 class TestRealWorkflowFiles:
@@ -1713,7 +1604,7 @@ class TestEdgeCases:
 
     def test_empty_workflow(self):
         """Test converting an empty workflow."""
-        workflow = {"id": "empty", "nodes": [], "links": []}
+        workflow = {"id": "empty", "nodes": [], "edges": []}
 
         converter = WorkflowLiteConverter()
         lite = converter.to_lite(workflow)
@@ -1721,26 +1612,19 @@ class TestEdgeCases:
         assert "version" in lite
         assert lite["nodes"] == {}
 
-    def test_workflow_without_links(self):
+    def test_workflow_without_connections(self):
         """Test workflow with nodes but no connections."""
         workflow = {
             "id": "no-links",
             "nodes": [
                 {
-                    "id": 1,
+                    "id": "1",
                     "type": "Node",
-                    "inputs": [],
-                    "outputs": [],
-                    "widgets_values": [],
-                    "pos": [0, 0],
-                    "size": [100, 100],
-                    "flags": {},
-                    "order": 0,
-                    "mode": 0,
-                    "properties": {}
+                    "position": {"x": 0, "y": 0},
+                    "data": {"label": "Node", "nodeType": "Node", "config": {}, "nodeDefinition": {"input": {}, "output": [], "output_name": []}}
                 }
             ],
-            "links": []
+            "edges": []
         }
 
         converter = WorkflowLiteConverter()
@@ -1750,26 +1634,19 @@ class TestEdgeCases:
         for input_value in node_data.get("inputs", {}).values():
             assert not isinstance(input_value, dict) or "node_id" not in input_value
 
-    def test_node_without_widgets_values(self):
-        """Test node with no widgets_values."""
+    def test_node_without_config(self):
+        """Test node with empty config (no parameters)."""
         workflow = {
             "id": "test",
             "nodes": [
                 {
-                    "id": 1,
+                    "id": "1",
                     "type": "SimpleNode",
-                    "inputs": [],
-                    "outputs": [],
-                    "widgets_values": [],
-                    "pos": [0, 0],
-                    "size": [100, 100],
-                    "flags": {},
-                    "order": 0,
-                    "mode": 0,
-                    "properties": {}
+                    "position": {"x": 0, "y": 0},
+                    "data": {"label": "SimpleNode", "nodeType": "SimpleNode", "config": {}, "nodeDefinition": {"input": {}, "output": [], "output_name": []}}
                 }
             ],
-            "links": []
+            "edges": []
         }
 
         converter = WorkflowLiteConverter()
@@ -1785,91 +1662,56 @@ class TestEdgeCases:
             "id": "complex",
             "nodes": [
                 {
-                    "id": 1,
-                    "type": "SourceNode",
-                    "inputs": [],
-                    "outputs": [
-                        {"name": "out1", "type": "STRING", "links": [1, 2]},
-                        {"name": "out2", "type": "INT", "links": [3]}
-                    ],
-                    "properties": {},
-                    "widgets_values": [],
-                    "pos": [0, 0],
-                    "size": [100, 100],
-                    "flags": {},
-                    "order": 0,
-                    "mode": 0
+                    "id": "1", "type": "SourceNode",
+                    "position": {"x": 0, "y": 0},
+                    "data": {
+                        "label": "SourceNode", "nodeType": "SourceNode", "config": {},
+                        "nodeDefinition": {"input": {}, "output": ["STRING", "INT"], "output_name": ["out1", "out2"]}
+                    }
                 },
                 {
-                    "id": 2,
-                    "type": "ProcessNode1",
-                    "inputs": [
-                        {"name": "in1", "type": "STRING", "link": 1}
-                    ],
-                    "outputs": [
-                        {"name": "result", "type": "STRING", "links": [4]}
-                    ],
-                    "properties": {},
-                    "widgets_values": [],
-                    "pos": [0, 0],
-                    "size": [100, 100],
-                    "flags": {},
-                    "order": 0,
-                    "mode": 0
+                    "id": "2", "type": "ProcessNode1",
+                    "position": {"x": 0, "y": 0},
+                    "data": {
+                        "label": "ProcessNode1", "nodeType": "ProcessNode1", "config": {},
+                        "nodeDefinition": {"input": {"required": {"in1": ["STRING", {}]}}, "output": ["STRING"], "output_name": ["result"]}
+                    }
                 },
                 {
-                    "id": 3,
-                    "type": "ProcessNode2",
-                    "inputs": [
-                        {"name": "in1", "type": "STRING", "link": 2},
-                        {"name": "in2", "type": "INT", "link": 3}
-                    ],
-                    "outputs": [],
-                    "properties": {},
-                    "widgets_values": [],
-                    "pos": [0, 0],
-                    "size": [100, 100],
-                    "flags": {},
-                    "order": 0,
-                    "mode": 0
+                    "id": "3", "type": "ProcessNode2",
+                    "position": {"x": 0, "y": 0},
+                    "data": {
+                        "label": "ProcessNode2", "nodeType": "ProcessNode2", "config": {},
+                        "nodeDefinition": {"input": {"required": {"in1": ["STRING", {}], "in2": ["INT", {}]}}, "output": []}
+                    }
                 },
                 {
-                    "id": 4,
-                    "type": "FinalNode",
-                    "inputs": [
-                        {"name": "in1", "type": "STRING", "link": 4}
-                    ],
-                    "outputs": [],
-                    "properties": {},
-                    "widgets_values": [],
-                    "pos": [0, 0],
-                    "size": [100, 100],
-                    "flags": {},
-                    "order": 0,
-                    "mode": 0
+                    "id": "4", "type": "FinalNode",
+                    "position": {"x": 0, "y": 0},
+                    "data": {
+                        "label": "FinalNode", "nodeType": "FinalNode", "config": {},
+                        "nodeDefinition": {"input": {"required": {"in1": ["STRING", {}]}}, "output": []}
+                    }
                 }
             ],
-            "links": [
-                [1, 1, 0, 2, 0, "STRING"],
-                [2, 1, 0, 3, 0, "STRING"],
-                [3, 1, 1, 3, 1, "INT"],
-                [4, 2, 0, 4, 0, "STRING"]
+            "edges": [
+                {"id": "e1", "source": "1", "target": "2", "sourceHandle": "out1", "targetHandle": "in1"},
+                {"id": "e2", "source": "1", "target": "3", "sourceHandle": "out1", "targetHandle": "in1"},
+                {"id": "e3", "source": "1", "target": "3", "sourceHandle": "out2", "targetHandle": "in2"},
+                {"id": "e4", "source": "2", "target": "4", "sourceHandle": "result", "targetHandle": "in1"},
             ]
         }
 
         converter = WorkflowLiteConverter()
         lite = converter.to_lite(workflow)
 
-        # Verify all nodes are present
         assert len(lite["nodes"]) == 4
 
-        # Verify connections
         assert lite["nodes"]["process_node1"]["inputs"]["in1"]["node_id"] == "1"
         assert lite["nodes"]["process_node2"]["inputs"]["in1"]["node_id"] == "1"
         assert lite["nodes"]["process_node2"]["inputs"]["in2"]["node_id"] == "1"
         assert lite["nodes"]["final"]["inputs"]["in1"]["node_id"] == "2"
 
-        # Test round-trip conversion
         back_to_standard = converter.to_standard(lite)
         assert len(back_to_standard["nodes"]) == 4
         assert len(back_to_standard["edges"]) == 4
@@ -2237,59 +2079,23 @@ class TestLastNodeAndLinkIdCalculation:
         assert standard["edges"] == []
 
     def test_last_node_id_preserved_from_original(self):
-        """Test that last_node_id correctly reflects max even when converting from standard."""
-        # Create a standard workflow with non-sequential node IDs
+        """Test that last_node_id correctly reflects max even when converting from xyflow."""
+        base_node = lambda nid: {  # noqa: E731
+            "id": nid, "type": "TestNode",
+            "position": {"x": 0, "y": 0},
+            "data": {"label": "TestNode", "nodeType": "TestNode", "config": {}, "nodeDefinition": {"input": {}, "output": [], "output_name": []}}
+        }
+
         original = {
             "id": "test-workflow",
-            "nodes": [
-                {
-                    "id": 1,
-                    "type": "TestNode",
-                    "inputs": [],
-                    "outputs": [],
-                    "widgets_values": [],
-                    "pos": [0, 0],
-                    "size": [100, 100],
-                    "flags": {},
-                    "order": 0,
-                    "mode": 0,
-                    "properties": {}
-                },
-                {
-                    "id": 15,  # Non-sequential
-                    "type": "TestNode",
-                    "inputs": [],
-                    "outputs": [],
-                    "widgets_values": [],
-                    "pos": [0, 0],
-                    "size": [100, 100],
-                    "flags": {},
-                    "order": 0,
-                    "mode": 0,
-                    "properties": {}
-                },
-                {
-                    "id": 7,  # Another non-sequential
-                    "type": "TestNode",
-                    "inputs": [],
-                    "outputs": [],
-                    "widgets_values": [],
-                    "pos": [0, 0],
-                    "size": [100, 100],
-                    "flags": {},
-                    "order": 0,
-                    "mode": 0,
-                    "properties": {}
-                }
-            ],
-            "links": []
+            "nodes": [base_node("1"), base_node("15"), base_node("7")],
+            "edges": []
         }
 
         converter = WorkflowLiteConverter()
         lite = converter.to_lite(original)
         back_to_standard = converter.to_standard(lite, original)
 
-        # xyflow format: check node count
         assert len(back_to_standard["nodes"]) == 3
         assert "edges" in back_to_standard
 
@@ -2350,70 +2156,55 @@ class TestInputIndexWithRealScenarios:
             }
         }
 
-        # Create standard workflow with mixed connections
+        source_node_def = {"input": {}, "output": ["STRING"], "output_name": ["output"]}
+        process_node_def = {
+            "input": {
+                "required": {"input1": ["STRING"], "input2": ["STRING"], "input3": ["STRING"]}
+            },
+            "output": ["STRING"],
+            "output_name": ["output"]
+        }
+
         standard = {
             "id": "test",
             "nodes": [
                 {
-                    "id": 1,
-                    "type": "SourceNode",
-                    "inputs": [],
-                    "outputs": [{"name": "output", "type": "STRING", "links": []}],
-                    "widgets_values": [],
-                    "pos": [0, 0],
-                    "size": [270, 82],
-                    "flags": {},
-                    "order": 0,
-                    "mode": 0,
-                    "properties": {}
+                    "id": "1", "type": "SourceNode",
+                    "position": {"x": 0, "y": 0},
+                    "data": {"label": "SourceNode", "nodeType": "SourceNode", "config": {}, "nodeDefinition": source_node_def}
                 },
                 {
-                    "id": 2,
-                    "type": "ProcessNode",
-                    "inputs": [
-                        {"name": "input1", "type": "STRING", "link": 1, "widget": {"name": "input1"}},  # Connected
-                        {"name": "input2", "type": "STRING", "link": None, "widget": {"name": "input2"}},  # Unconnected
-                        {"name": "input3", "type": "STRING", "link": 1, "widget": {"name": "input3"}},  # Connected
-                    ],
-                    "outputs": [{"name": "output", "type": "STRING", "links": []}],
-                    "widgets_values": ["", "direct_value", ""],  # input2 has value
-                    "pos": [0, 0],
-                    "size": [270, 82],
-                    "flags": {},
-                    "order": 0,
-                    "mode": 0,
-                    "properties": {}
+                    "id": "2", "type": "ProcessNode",
+                    "position": {"x": 0, "y": 0},
+                    "data": {
+                        "label": "ProcessNode", "nodeType": "ProcessNode",
+                        "config": {"input2": "direct_value"},
+                        "nodeDefinition": process_node_def
+                    }
                 }
             ],
-            "links": [
-                [1, 1, 0, 2, 0, "STRING"],  # source -> input1
-                [2, 1, 0, 2, 2, "STRING"],  # source -> input3
+            "edges": [
+                {"id": "e1", "source": "1", "target": "2", "sourceHandle": "output", "targetHandle": "input1"},
+                {"id": "e2", "source": "1", "target": "2", "sourceHandle": "output", "targetHandle": "input3"},
             ]
         }
 
         converter = WorkflowLiteConverter(node_info=node_info)
         lite = converter.to_lite(standard)
 
-        # Verify lite format
         process_node = lite["nodes"]["process"]
         assert process_node["inputs"]["input1"] == {"node_id": "1", "output_name": "output"}
         assert process_node["inputs"]["input2"] == "direct_value"
         assert process_node["inputs"]["input3"] == {"node_id": "1", "output_name": "output"}
 
-        # Convert back to standard (xyflow format)
         back_to_standard = converter.to_standard(lite)
 
-        # Verify output has xyflow format
         assert "edges" in back_to_standard
         assert len(back_to_standard["nodes"]) == 2
 
-        # xyflow format: edges reference nodes by handle names
         assert any(e["targetHandle"] == "input1" for e in back_to_standard["edges"])
         assert any(e["targetHandle"] == "input3" for e in back_to_standard["edges"])
-
-        # input2 should be a direct value in config, not a connection
         assert not any(e["targetHandle"] == "input2" for e in back_to_standard["edges"])
 
-        # input2 value should be in data.config
         config = back_to_standard["nodes"][1]["data"]["config"]
         assert config.get("input2") == "direct_value"

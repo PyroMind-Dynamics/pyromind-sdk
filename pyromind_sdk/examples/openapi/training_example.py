@@ -260,6 +260,86 @@ def get_node_output_example(task_id: str, node_id: str) -> Optional[Dict]:
         client.close()
 
 
+def _validate_node_info(node_info: dict) -> list:
+    """Validate node info structure and business rules, return warnings."""
+    warnings = []
+
+    for node_name, info in node_info.items():
+        if not isinstance(node_name, str) or len(node_name) == 0:
+            warnings.append(f"Node name is not a valid string: {node_name!r}")
+        if not isinstance(info, dict):
+            warnings.append(f"Node {node_name}: info is not a dict")
+            continue
+
+        display_name = info.get("display_name")
+        if display_name is not None:
+            if not isinstance(display_name, str):
+                warnings.append(f"Node {node_name}: display_name should be string, got {type(display_name).__name__}")
+            elif len(display_name.strip()) == 0:
+                warnings.append(f"Node {node_name}: display_name is empty or whitespace")
+
+        description = info.get("description")
+        if description is not None and not isinstance(description, str):
+            warnings.append(f"Node {node_name}: description should be string, got {type(description).__name__}")
+
+        category = info.get("category")
+        if category is not None and not isinstance(category, str):
+            warnings.append(f"Node {node_name}: category should be string, got {type(category).__name__}")
+
+        output_flag = info.get("OUTPUT_NODE")
+        if output_flag is not None and not isinstance(output_flag, bool):
+            warnings.append(f"Node {node_name}: OUTPUT_NODE should be bool, got {type(output_flag).__name__}")
+
+        node_type = info.get("NODE_TYPE")
+        if node_type is not None and not isinstance(node_type, str):
+            warnings.append(f"Node {node_name}: NODE_TYPE should be string, got {type(node_type).__name__}")
+
+        input_defs = info.get("input")
+        if input_defs is not None:
+            if not isinstance(input_defs, dict):
+                warnings.append(f"Node {node_name}: input should be dict, got {type(input_defs).__name__}")
+            else:
+                for cat in ("required", "optional"):
+                    params = input_defs.get(cat)
+                    if params is not None:
+                        if not isinstance(params, dict):
+                            warnings.append(f"Node {node_name}: input.{cat} should be dict")
+                            continue
+                        for param_name, param_def in params.items():
+                            if not isinstance(param_name, str) or len(param_name) == 0:
+                                warnings.append(f"Node {node_name}: input.{cat} contains invalid param name")
+                                continue
+                            if not isinstance(param_def, list) or len(param_def) < 1:
+                                warnings.append(f"Node {node_name}: input.{cat}.{param_name} should be [type, options?]")
+                                continue
+
+                            first = param_def[0]
+                            if isinstance(first, list):
+                                for opt in first:
+                                    if not isinstance(opt, str):
+                                        warnings.append(
+                                            f"Node {node_name}: input.{cat}.{param_name} COMBO option should be string"
+                                        )
+                                        break
+
+        outputs = info.get("output")
+        if outputs is not None:
+            if not isinstance(outputs, list):
+                warnings.append(f"Node {node_name}: output should be list, got {type(outputs).__name__}")
+
+        output_names = info.get("output_name")
+        if output_names is not None:
+            if not isinstance(output_names, list):
+                warnings.append(f"Node {node_name}: output_name should be list, got {type(output_names).__name__}")
+            elif outputs is not None and isinstance(outputs, list):
+                if len(output_names) != len(outputs):
+                    warnings.append(
+                        f"Node {node_name}: output_name len ({len(output_names)}) != output len ({len(outputs)})"
+                    )
+
+    return warnings
+
+
 def get_node_info_example() -> Optional[Dict]:
     """
     Example: Get all available node information for the current user.
@@ -280,6 +360,8 @@ def get_node_info_example() -> Optional[Dict]:
     client = PyroMindAPIClient()
     
     try:
+        print("Reloading node definitions...")
+        client.training.reload_nodes()
         print("Getting node information...")
         node_info = client.training.get_node_info()
         
@@ -294,11 +376,23 @@ def get_node_info_example() -> Optional[Dict]:
                 print(f"    Description: {info.get('description', 'N/A')}")
                 
                 # Display inputs
-                inputs = info.get('input', {})
-                if inputs:
-                    print(f"    Inputs ({len(inputs)}):")
-                    for input_name, input_type in inputs.items():
-                        print(f"      - {input_name}: {input_type}")
+                input_defs = info.get('input', {})
+                if input_defs:
+                    total_inputs = sum(
+                        len(input_defs.get(cat, {}))
+                        for cat in ("required", "optional")
+                        if isinstance(input_defs.get(cat), dict)
+                    )
+                    print(f"    Inputs ({total_inputs}):")
+                    for category in ("required", "optional"):
+                        params = input_defs.get(category, {})
+                        if params and isinstance(params, dict):
+                            for param_name, param_def in params.items():
+                                if isinstance(param_def, list) and len(param_def) > 0:
+                                    ptype = param_def[0]
+                                    if isinstance(ptype, list):
+                                        ptype = "COMBO"
+                                    print(f"      - {param_name} ({ptype})")
                 else:
                     print("    Inputs: None")
                 
@@ -311,6 +405,17 @@ def get_node_info_example() -> Optional[Dict]:
                 else:
                     print("    Outputs: None")
                 
+                print()
+            
+            # Validate content reasonableness
+            warnings = _validate_node_info(node_info)
+            if warnings:
+                print(f"⚠ Found {len(warnings)} content issue(s):")
+                for w in warnings:
+                    print(f"  - {w}")
+                print()
+            else:
+                print("✓ All node content looks reasonable")
                 print()
         
         return node_info
@@ -360,50 +465,67 @@ def wait_for_task_completion(task_id: str, target_status: str = "Succeeded",
         time.sleep(check_interval)
 
 
-def parse_workflow_graph(workflow: dict) -> Tuple[Dict[int, dict], Dict[int, List[Tuple[int, str]]]]:
+def parse_workflow_graph(workflow: dict) -> Tuple[Dict, Dict]:
     """
-    Parse workflow JSON to extract node information and connections.
-    
+    Parse xyflow workflow JSON to extract node information and connections.
+
     Args:
-        workflow: Workflow JSON dictionary
-        
+        workflow: Workflow JSON dictionary (xyflow format with data.nodeDefinition + edges)
+
     Returns:
         Tuple of (nodes_dict, adjacency_list)
         - nodes_dict: Dictionary mapping node_id to node info
         - adjacency_list: Dictionary mapping node_id to list of (target_node_id, connection_type) tuples
     """
     nodes_dict = {}
-    adjacency_list: Dict[int, List[Tuple[int, str]]] = {}
-    
-    # Parse nodes
+    adjacency_list = {}
+
     for node in workflow.get("nodes", []):
-        node_id = node.get("id")
-        if node_id is None:
+        node_id = str(node.get("id", ""))
+        if not node_id:
             continue
-        
+
+        node_type = node.get("type", "Unknown")
+        data = node.get("data", {})
+        node_def = data.get("nodeDefinition") or {}
+
+        name = data.get("label", node_type)
+
+        input_defs = node_def.get("input", {})
+        inputs = []
+        for category in ("required", "optional"):
+            cat = input_defs.get(category, {})
+            for pname, pdef in cat.items():
+                ptype = pdef[0] if isinstance(pdef, list) and len(pdef) > 0 else "STRING"
+                if isinstance(ptype, list):
+                    ptype = "COMBO"
+                inputs.append({"name": pname, "type": ptype})
+
+        output_names = node_def.get("output_name", [])
+        output_types = node_def.get("output", [])
+        outputs = []
+        for i, oname in enumerate(output_names):
+            otype = output_types[i] if i < len(output_types) else "AUTO"
+            outputs.append({"name": oname, "type": otype})
+
         nodes_dict[node_id] = {
             "id": node_id,
-            "type": node.get("type", "Unknown"),
-            "name": node.get("properties", {}).get("Node name for S&R", node.get("type", "Unknown")),
-            "inputs": node.get("inputs", []),
-            "outputs": node.get("outputs", []),
+            "type": node_type,
+            "name": name,
+            "inputs": inputs,
+            "outputs": outputs,
         }
         adjacency_list[node_id] = []
-    
-    # Parse links to build adjacency list
-    # Link format: [link_id, source_node_id, source_socket_index, target_node_id, target_socket_index, type]
-    for link in workflow.get("links", []):
-        if len(link) >= 6:
-            source_node_id = link[1]
-            target_node_id = link[3]
-            connection_type = link[5] if len(link) > 5 else "unknown"
-            
-            if source_node_id in adjacency_list and target_node_id in nodes_dict:
-                # Check if connection already exists
-                existing = any(tid == target_node_id for tid, _ in adjacency_list[source_node_id])
-                if not existing:
-                    adjacency_list[source_node_id].append((target_node_id, connection_type))
-    
+
+    for edge in workflow.get("edges", []):
+        source_id = str(edge.get("source", ""))
+        target_id = str(edge.get("target", ""))
+        conn_type = edge.get("sourceHandle", "unknown")
+        if source_id in adjacency_list and target_id in nodes_dict:
+            existing = any(tid == target_id for tid, _ in adjacency_list[source_id])
+            if not existing:
+                adjacency_list[source_id].append((target_id, conn_type))
+
     return nodes_dict, adjacency_list
 
 
@@ -470,8 +592,8 @@ def draw_workflow_graph(workflow: dict) -> None:
     print("-" * 60)
     
     # Find nodes with no inputs (entry nodes)
-    entry_nodes: Set[int] = set()
-    all_targets: Set[int] = set()
+    entry_nodes: Set = set()
+    all_targets: Set = set()
     for source_id, targets in adjacency_list.items():
         if targets:
             all_targets.update(tid for tid, _ in targets)
@@ -491,9 +613,9 @@ def draw_workflow_graph(workflow: dict) -> None:
         entry_nodes = set(nodes_dict.keys())
     
     # Build a simple text-based graph
-    visited: Set[int] = set()
+    visited: Set = set()
     
-    def print_connections(node_id: int, indent: str = "", prefix: str = ""):
+    def print_connections(node_id, indent: str = "", prefix: str = ""):
         """Recursively print node connections."""
         if node_id in visited:
             return

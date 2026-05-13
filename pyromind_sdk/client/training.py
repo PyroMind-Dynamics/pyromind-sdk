@@ -199,8 +199,34 @@ class TrainingClient(PyroMindClient):
             ```
         """
         response = self.get("/training/node_info")
-        # API returns {success: True, data: {...}} format
+        # API returns {success: True, data: {nodes: [...], total: N}} format
         data = self._extract_data(response)
+        
+        # Normalize: convert {nodes: [...], total: N} -> {node_name: node_info}
+        if isinstance(data, dict) and "nodes" in data:
+            nodes = data["nodes"]
+            if isinstance(nodes, list):
+                return {node["name"]: node for node in nodes if isinstance(node, dict) and "name" in node}
         
         # Backend returns node info dictionary directly in the data field
         return data if isinstance(data, dict) else {}
+
+    def reload_nodes(self) -> Dict[str, Any]:
+        """
+        Reload/refresh all node definitions from the server.
+
+        This forces the server to re-scan and reload all node YAML definitions,
+        including newly added custom nodes. Call this after uploading or modifying
+        custom node YAML files.
+
+        Returns:
+            API response dictionary indicating success or failure.
+
+        Example:
+            ```python
+            result = client.training.reload_nodes()
+            if result.get("success"):
+                logger.info("Nodes reloaded successfully")
+            ```
+        """
+        return self.post("/nodes/reload")

@@ -67,6 +67,13 @@ from .client.workflow import (
     LayoutGenerator,
     to_workflow_lite,
     to_workflow_standard,
+    validate_standard_format,
+)
+
+# Export command executor utilities
+from .nodes import (
+    extract_placeholders,
+    replace_template,
 )
 
 __all__ = [
@@ -120,4 +127,8 @@ __all__ = [
     "LayoutGenerator",
     "to_workflow_lite",
     "to_workflow_standard",
+    "validate_standard_format",
+    # Command executor
+    "extract_placeholders",
+    "replace_template",
 ]

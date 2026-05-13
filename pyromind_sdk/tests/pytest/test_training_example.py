@@ -622,6 +622,73 @@ class TestGetNodeInfo:
         else:
             print("[TEST] Function returned None (may indicate API error)")
 
+    def test_node_info_content_reasonableness(self, client):
+        """Validate node info structure for all nodes"""
+        print("[TEST] Validating node info structure...")
+        node_info = client.training.get_node_info()
+        assert isinstance(node_info, dict)
+
+        if not node_info:
+            pytest.skip("No node info available")
+
+        for node_name, info in node_info.items():
+            assert isinstance(node_name, str) and len(node_name) > 0, \
+                f"Node name should be non-empty string, got {type(node_name).__name__}"
+            assert isinstance(info, dict), f"Node {node_name}: info should be dict"
+
+            display_name = info.get("display_name")
+            if display_name is not None:
+                assert isinstance(display_name, str), f"Node {node_name}: display_name should be string"
+
+            description = info.get("description")
+            if description is not None:
+                assert isinstance(description, str), f"Node {node_name}: description should be string"
+
+            category = info.get("category")
+            if category is not None:
+                assert isinstance(category, str), f"Node {node_name}: category should be string"
+
+            output_flag = info.get("OUTPUT_NODE")
+            if output_flag is not None:
+                assert isinstance(output_flag, bool), f"Node {node_name}: OUTPUT_NODE should be bool"
+
+            node_type = info.get("NODE_TYPE")
+            if node_type is not None:
+                assert isinstance(node_type, str), f"Node {node_name}: NODE_TYPE should be string"
+
+            input_defs = info.get("input")
+            if input_defs is not None:
+                assert isinstance(input_defs, dict), f"Node {node_name}: input should be dict"
+                for category in ("required", "optional"):
+                    params = input_defs.get(category)
+                    if params is not None:
+                        assert isinstance(params, dict), \
+                            f"Node {node_name}: input.{category} should be dict"
+                        for param_name, param_def in params.items():
+                            assert isinstance(param_name, str) and len(param_name) > 0, \
+                                f"Node {node_name}: input.{category} param name should be non-empty string"
+                            assert isinstance(param_def, list) and len(param_def) >= 1, \
+                                f"Node {node_name}: input.{category}.{param_name} should be [type, options?]"
+
+                            first = param_def[0]
+                            if isinstance(first, list):
+                                for opt in first:
+                                    assert isinstance(opt, str), \
+                                        f"Node {node_name}: input.{category}.{param_name} COMBO option should be string"
+
+            outputs = info.get("output")
+            if outputs is not None:
+                assert isinstance(outputs, list), f"Node {node_name}: output should be list"
+
+            output_names = info.get("output_name")
+            if output_names is not None:
+                assert isinstance(output_names, list), f"Node {node_name}: output_name should be list"
+                if outputs is not None:
+                    assert len(output_names) == len(outputs), \
+                        f"Node {node_name}: output_name len ({len(output_names)}) != output len ({len(outputs)})"
+
+            print(f"[TEST] Verified node structure: {node_name} (display_name={display_name})")
+
 
 class TestWaitForTaskCompletion:
     """Test cases for waiting for task completion"""
