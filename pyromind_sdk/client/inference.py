@@ -133,3 +133,20 @@ class InferenceClient(PyroMindClient):
         data = self._extract_data(response)
         
         return InferenceJobResponse(**data)
+
+
+    def resume(self, job_id: str) -> InferenceJobResponse:
+        """
+        Resume an inference job
+
+        Args:
+            job_id: ID of the inference job to pause
+
+        Returns:
+            InferenceJobResponse object
+        """
+        response = self.post(f"/inference/{job_id}/resume")
+        # API returns {success: True, data: {...}} format
+        data = self._extract_data(response)
+
+        return InferenceJobResponse(**data)
