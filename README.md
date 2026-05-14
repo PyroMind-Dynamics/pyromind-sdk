@@ -18,6 +18,8 @@ Define nodes using YAML files with the unified `parameters` format. All inputs a
 
 - **Input parameters**: Use `type: "input"` with `required_type: "required"` or `"optional"`
 - **Output parameters**: Use `type: "output"` (outputs are automatically extracted to create `RETURN_TYPES` and `RETURN_NAMES`)
+- **dtype**: Any string is valid as a dtype — there is no whitelist restriction. Use a single string (e.g. `"STRING"`) or a list for union types (e.g. `[STRING, PATH]` or pipe-separated `STRING|PATH`)
+- **Constraints**: Use the `limit` block or flat keys (`min`, `max`, `step`, `enum`) to restrict input values; constraints are validated against the dtype (e.g. `min`/`max` only for INT/FLOAT)
 
 ```python
 from pyromind_sdk import load_nodes_from_yaml
@@ -51,6 +53,26 @@ parameters:
     default: "World"
     type: "input"
     required_type: "required"
+  - name: score
+    dtype: FLOAT
+    type: input
+    required_type: required
+    default: 0.5
+    limit:
+      min: 0.0
+      max: 1.0
+  - name: path_or_model
+    dtype: [STRING, PATH]    # union type — accepts STRING and other non-basic types
+    type: input
+    required_type: optional
+  - name: mode
+    dtype: STRING
+    type: input
+    required_type: required
+    enum:
+      - "train"
+      - "eval"
+      - "predict"
   - name: output
     dtype: "STRING"
     type: "output"
@@ -147,11 +169,11 @@ config = python_function_to_yaml(
 
 Auto-generate rules:
 - Inputs are generated from function parameters in order
-- Input `dtype` is inferred from annotations (`str/int/float/bool`)
+- Input `dtype` is inferred from annotations: `str` → `STRING`, `int` → `INT`, `float` → `FLOAT`, `bool` → `BOOLEAN`, `Path` → `PATH`
 - Inputs are generated as `required_type: optional` with no default
 - Outputs are generated only from `return { ... }` dict literals
 - Return dict keys must be string literals
-- Unknown types fall back to `STRING`
+- Unknown annotations are passed through as the annotation name (no fallback to STRING)
 - Generated YAML `python_code` is emitted as an absolute path
 
 CLI 用法（写入到 YAML 文件）:
@@ -281,9 +303,9 @@ base_class: PortPodExecutionNode
 
 ### Type Conversion
 
-- `convert_string_to_python_type(value: str, type_spec: Any) -> Any`: Convert string value to Python type
+- `convert_string_to_python_type(value: str, type_spec: Any) -> Any`: Convert string value to Python type (supports INT → int, FLOAT → float, BOOLEAN → bool; PATH/MODEL/ENV → str)
 - `convert_inputs(inputs: Dict, input_types: Dict) -> Dict`: Convert input values according to type definitions
-- `validate_output_type(value: Any, type_spec: str) -> bool`: Validate output value type
+- `validate_output_type(value: Any, type_spec: str) -> bool`: Validate output value type (supports STRING, PATH, MODEL, ENV, INT, FLOAT, BOOLEAN)
 
 ## Testing
 
@@ -325,7 +347,8 @@ Check the `examples/` directory for more examples:
 - ✅ **Dynamic Loading**: Load nodes at runtime without code changes
 - ✅ **Multiple Inheritance**: Support for multiple base classes in YAML
 - ✅ **Python Function Nodes**: Execute Python functions directly in nodes via YAML configuration
-- ✅ **Type Validation**: Automatic type conversion and validation
+- ✅ **Type Conversion**: Automatic type conversion and validation (INT, FLOAT, BOOLEAN, STRING, PATH, MODEL, ENV)
+- ✅ **Dtype Constraints**: Input constraints (min, max, step, enum) validated against dtype compatibility
 - ✅ **Resource Management**: Configure CPU, memory, and GPU resources
 - ✅ **Customer Inputs**: Mark inputs/outputs for customer-specific use
 - ✅ **Security**: Built-in validation and security checks
