@@ -509,6 +509,11 @@ def parse_parameters(parameters: List[Dict[str, Any]]) -> Dict[str, Any]:
 
         # Read limit block (constraints)
         limit = param.get("limit", {})
+        if limit is not None and not isinstance(limit, dict):
+            raise ValueError(
+                f"Parameter '{name}': 'limit' must be a dict, got {type(limit).__name__}"
+            )
+        limit = limit or {}
 
         # Read default from top-level (with backward compat)
         default = param.get("default")
