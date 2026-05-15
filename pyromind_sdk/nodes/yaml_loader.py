@@ -393,36 +393,50 @@ def _validate_constraint_for_dtype(
     """Validate that a constraint key is compatible with the given dtype(s)."""
     numeric_types = {"INT", "FLOAT"}
 
-    if key in ("min", "max", "step"):
+    if key == "step":
         if not dtypes.issubset(numeric_types):
             raise ValueError(
-                f"'{key}' for parameter '{name}' is only valid for INT/FLOAT types, "
+                f"'step' for parameter '{name}' is only valid for INT/FLOAT types, "
                 f"got dtype(s): {', '.join(sorted(dtypes))}"
             )
         if not isinstance(value, (int, float)):
             raise ValueError(
-                f"{key} for parameter '{name}' must be a number, got {type(value)}"
+                f"step for parameter '{name}' must be a number, got {type(value)}"
             )
+    elif key in ("min", "max"):
+        if dtypes == {"BOOLEAN"}:
+            raise ValueError(
+                f"'{key}' for parameter '{name}' is not valid for BOOLEAN type"
+            )
+        if dtypes.issubset({"INT", "FLOAT"}):
+            if not isinstance(value, (int, float)):
+                raise ValueError(
+                    f"{key} for parameter '{name}' must be a number, got {type(value)}"
+                )
+        elif dtypes.issubset({"STRING", "PATH"}):
+            if not isinstance(value, str):
+                raise ValueError(
+                    f"{key} for STRING/PATH parameter '{name}' must be a string, got {type(value)}"
+                )
 
     elif key == "enum":
         if not isinstance(value, list):
             raise ValueError(f"enum for parameter '{name}' must be a list, got {type(value)}")
-        # Validate each enum element type matches dtype
-        for elem in value:
-            if "INT" in dtypes and not isinstance(elem, int):
+        # Validate each enum element type matches at least one dtype in the union.
+        # STRING/PATH accepts any value; only check when no string type is in the union.
+        if "STRING" in dtypes or "PATH" in dtypes:
+            pass  # string types accept any value
+        else:
+            for elem in value:
+                if "INT" in dtypes and isinstance(elem, int):
+                    continue
+                if "FLOAT" in dtypes and isinstance(elem, (int, float)):
+                    continue
+                if "BOOLEAN" in dtypes and isinstance(elem, bool):
+                    continue
                 raise ValueError(
-                    f"enum element '{elem}' for INT parameter '{name}' must be an integer, "
-                    f"got {type(elem)}"
-                )
-            if "FLOAT" in dtypes and not isinstance(elem, (int, float)):
-                raise ValueError(
-                    f"enum element '{elem}' for FLOAT parameter '{name}' must be a number, "
-                    f"got {type(elem)}"
-                )
-            if "BOOLEAN" in dtypes and not isinstance(elem, bool):
-                raise ValueError(
-                    f"enum element '{elem}' for BOOLEAN parameter '{name}' must be a boolean, "
-                    f"got {type(elem)}"
+                    f"enum element '{elem}' for parameter '{name}' (dtypes: "
+                    f"{', '.join(sorted(dtypes))}) does not match any declared type"
                 )
 
 
@@ -506,6 +520,14 @@ def parse_parameters(parameters: List[Dict[str, Any]]) -> Dict[str, Any]:
         # Read dtype (supports string or list for union)
         dtype_raw = param.get("dtype", "STRING")
         dtypes = _get_dtype_set(dtype_raw)
+        # Validate union: only STRING/PATH can be in unions, others must be single types
+        if len(dtypes) > 1:
+            solo_types = {"INT", "FLOAT", "BOOLEAN"}
+            if dtypes & solo_types:
+                raise ValueError(
+                    f"Parameter '{name}': INT/FLOAT/BOOLEAN cannot be in a union, "
+                    f"got {sorted(dtypes)}"
+                )
 
         # Read limit block (constraints)
         limit = param.get("limit", {})
@@ -514,6 +536,14 @@ def parse_parameters(parameters: List[Dict[str, Any]]) -> Dict[str, Any]:
                 f"Parameter '{name}': 'limit' must be a dict, got {type(limit).__name__}"
             )
         limit = limit or {}
+        # 校验 limit 中是否存在未知 key
+        allowed_limit_keys = {"min", "max", "step", "enum"}
+        unknown_keys = set(limit.keys()) - allowed_limit_keys
+        if unknown_keys:
+            raise ValueError(
+                f"Parameter '{name}': unknown key(s) in limit: {', '.join(sorted(unknown_keys))}. "
+                f"Allowed keys: {', '.join(sorted(allowed_limit_keys))}"
+            )
 
         # Read default from top-level (with backward compat)
         default = param.get("default")
@@ -840,12 +870,24 @@ def create_node_class_from_yaml(
         # Process required inputs
         for name, config in inputs_config.get("required", {}).items():
             type_spec, options = parse_input_type(config)
-            required[name] = (type_spec, options) if options else (type_spec,)
+            if isinstance(type_spec, list):
+                # Old format: list as first element = dropdown/enum
+                # New: ("STRING", {"enum": list, **options})
+                new_options = dict(options) if options else {}
+                new_options["enum"] = list(type_spec)
+                required[name] = ("STRING", new_options)
+            else:
+                required[name] = (type_spec, options) if options else (type_spec,)
 
         # Process optional inputs
         for name, config in inputs_config.get("optional", {}).items():
             type_spec, options = parse_input_type(config)
-            optional[name] = (type_spec, options) if options else (type_spec,)
+            if isinstance(type_spec, list):
+                new_options = dict(options) if options else {}
+                new_options["enum"] = list(type_spec)
+                optional[name] = ("STRING", new_options)
+            else:
+                optional[name] = (type_spec, options) if options else (type_spec,)
 
         return {"required": required, "optional": optional}
 
