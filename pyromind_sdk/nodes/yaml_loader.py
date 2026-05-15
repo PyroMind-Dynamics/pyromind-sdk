@@ -818,6 +818,14 @@ def create_node_class_from_yaml(
                 environment=environment,
             )
             class_dict["COMMAND_TEMPLATE"] = command_template
+
+            # Python function 节点：通过 base_class 获取 IMAGE_ID
+            # 检查是否有基类提供了非 alpine 的 IMAGE_ID（如 JupyterLabPodExecutionNode）
+            if not any(
+                "IMAGE_ID" in base.__dict__ and "alpine" not in base.__dict__["IMAGE_ID"]
+                for base in base_classes
+            ):
+                class_dict["IMAGE_ID"] = "python:3.10"
         else:
             # Traditional node: use command_template from configuration
             command_template = yaml_config.get("command_template", [])
