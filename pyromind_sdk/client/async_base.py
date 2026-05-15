@@ -1,16 +1,14 @@
 """
-Base client class for PyroMind API
+Async Base client class for PyroMind API
 
-This module provides the base client class that handles authentication,
-HTTP requests, and error handling for all API clients.
+This module provides the async base client class that handles authentication,
+HTTP requests, and error handling for all async API clients.
 """
 
 import os
 import logging
-import requests
-from typing import Optional, Dict, Any, Union
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+import aiohttp
+from typing import Optional, Dict, Any
 
 
 # Constants
@@ -21,7 +19,6 @@ ENV_API_KEY = "PYROMIND_API_KEY"
 ENV_BASE_URL = "PYROMIND_BASE_URL"
 ENV_LOG_FORMAT = "PYROMIND_LOG_FORMAT"
 RETRY_STATUS_CODES = [500, 502, 503, 504]
-RETRY_ALLOWED_METHODS = ["GET", "POST", "PUT", "DELETE"]
 
 ERROR_MESSAGE_MAX_LENGTH = 500
 
@@ -29,7 +26,7 @@ ERROR_MESSAGE_MAX_LENGTH = 500
 DEFAULT_LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 
 # Configure logger (always enabled)
-logger = logging.getLogger("pyromind_sdk")
+logger = logging.getLogger("pyromind_sdk.async")
 logger.setLevel(logging.INFO)
 
 # Configure handler with format from environment variable or default
@@ -40,22 +37,21 @@ _handler.setFormatter(logging.Formatter(_log_format))
 logger.addHandler(_handler)
 
 
-class PyroMindAPIError(Exception):
-    """Base exception for PyroMind API errors"""
-    def __init__(self, message: str, status_code: Optional[int] = None, response: Optional[Dict] = None, headers: Optional[Dict] = None):
+class PyroMindAsyncAPIError(Exception):
+    """Base exception for PyroMind Async API errors"""
+    def __init__(self, message: str, status_code: Optional[int] = None, response: Optional[Dict] = None):
         self.message = message
         self.status_code = status_code
         self.response = response
-        self.headers = headers
         super().__init__(self.message)
 
 
-class PyroMindClient:
+class PyroMindAsyncClient:
     """
-    Base client class for PyroMind API
+    Async base client class for PyroMind API
 
-    Handles authentication, HTTP requests, and error handling.
-    All resource-specific clients inherit from this class.
+    Handles authentication, async HTTP requests, and error handling.
+    All resource-specific async clients inherit from this class.
 
     Args:
         api_key: Bearer token for API authentication. If not provided, will try to
@@ -103,37 +99,35 @@ class PyroMindClient:
             )
         self.api_key = api_key
         self.base_url = base_url.rstrip('/')
-        self.timeout = timeout
+        self.timeout = aiohttp.ClientTimeout(total=timeout)
+        self.max_retries = max_retries
 
-        # Create session with retry strategy
-        self.session = requests.Session()
-        retry_strategy = Retry(
-            total=max_retries,
-            backoff_factor=1,
-            status_forcelist=RETRY_STATUS_CODES,
-            allowed_methods=RETRY_ALLOWED_METHODS
-        )
-        adapter = HTTPAdapter(max_retries=retry_strategy)
-        self.session.mount("http://", adapter)
-        self.session.mount("https://", adapter)
-        
-        # Set default headers
-        self.session.headers.update({
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-        })
-    
+        # Session will be created lazily
+        self._session: Optional[aiohttp.ClientSession] = None
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Get or create aiohttp session"""
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(
+                timeout=self.timeout,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
+                }
+            )
+        return self._session
+
     def _extract_data(self, response: Dict[str, Any]) -> Any:
         """
         Extract data from API response
-        
+
         API responses are wrapped in {success: True, data: {...}} format.
         This method extracts the actual data from the response.
-        
+
         Args:
             response: API response dictionary
-            
+
         Returns:
             Extracted data from response
         """
@@ -141,29 +135,28 @@ class PyroMindClient:
             if "data" in response:
                 return response["data"]
             # If response doesn't have 'data' field, return the whole response
-            # (for backward compatibility)
             return response
         return response
-    
+
     # ========== URL and Request Building ==========
-    
+
     def _build_url(self, endpoint: str) -> str:
         """Build full URL from endpoint"""
         return f"{self.base_url}/{endpoint.lstrip('/')}"
-    
+
     def _build_request_context(self, method: str, url: str) -> str:
         """Build request context string for error messages"""
         return f"{method.upper()} {url}"
-    
+
     # ========== Error Data Extraction ==========
-    
-    def _extract_error_data(self, response) -> Dict[str, Any]:
+
+    def _extract_error_data(self, response: aiohttp.ClientResponse) -> Dict[str, Any]:
         """Extract error data from response, handling JSON parse failures"""
         try:
             return response.json()
         except Exception:
             return {"message": response.text}
-    
+
     def _truncate_error_message(self, error_data: Dict[str, Any], max_length: int = 500) -> Dict[str, Any]:
         """Truncate error message to avoid flooding logs"""
         if isinstance(error_data, dict) and isinstance(error_data.get("message"), str):
@@ -171,20 +164,27 @@ class PyroMindClient:
             if len(msg) > max_length:
                 error_data["message"] = msg[:max_length] + "..."
         return error_data
-    
+
     # ========== Error Message Formatting ==========
-    
-    def _format_400_error(self, response, error_data: Dict[str, Any]) -> str:
+
+    def _format_400_error(self, response: aiohttp.ClientResponse, error_data: Dict[str, Any]) -> str:
         """Format error message for 400 Bad Request"""
         base_message = (
             "Bad Request (400). The request was invalid or malformed. "
             "This usually means there's an issue with the request parameters, "
             "request body format, or missing required fields."
         )
-        response_text = response.text[:ERROR_MESSAGE_MAX_LENGTH]
+        
+        # response.text is a coroutine in aiohttp, we need to handle this
+        # Since we're in sync context, we'll use the error_data instead
+        if 'error' in error_data and 'message' in error_data['error']:
+            detail = error_data['error']['message']
+            return f"{base_message} Detail: {detail}"
+        
+        return base_message
         suffix = "..." if len(response.text) > ERROR_MESSAGE_MAX_LENGTH else ""
         return f"{base_message}\nResponse: {response_text}{suffix}"
-    
+
     def _format_401_error(self, error_data: Dict[str, Any]) -> str:
         """Format error message for 401 Unauthorized"""
         error_message = (
@@ -194,14 +194,12 @@ class PyroMindClient:
         if error_data.get("message"):
             error_message += f" Server message: {error_data.get('message')}"
         return error_message
-    
+
     def _format_404_error(self, error_data: Dict[str, Any]) -> str:
         """Format error message for 404 Not Found"""
-        # Check for nested error structure (APIResponse format)
         if not isinstance(error_data, dict):
             return "Resource not found (404). The requested resource does not exist."
-        
-        # Check "error" field
+
         if "error" in error_data:
             error_obj = error_data.get("error", {})
             if isinstance(error_obj, dict):
@@ -211,8 +209,7 @@ class PyroMindClient:
                     return f"{error_code}: {error_msg}"
                 if error_msg:
                     return error_msg
-        
-        # Check "detail" field
+
         if "detail" in error_data:
             detail = error_data.get("detail")
             if isinstance(detail, dict) and "error" in detail:
@@ -226,13 +223,12 @@ class PyroMindClient:
                         return error_msg
             elif isinstance(detail, str):
                 return detail
-        
-        # Default message
+
         error_message = "Resource not found (404). The requested resource does not exist."
         if error_data.get("message"):
             error_message += f" Details: {error_data.get('message')}"
         return error_message
-    
+
     def _format_422_error(self, error_data: Dict[str, Any]) -> str:
         """Format error message for 422 Unprocessable Entity"""
         error_message = "Unprocessable Entity (422). The request was well-formed but contains semantic errors."
@@ -241,14 +237,13 @@ class PyroMindClient:
         if error_data.get("detail"):
             error_message += f"\nValidation details: {error_data.get('detail')}"
         return error_message
-    
-    def _format_generic_error(self, response, error_data: Dict[str, Any]) -> str:
+
+    def _format_generic_error(self, response: aiohttp.ClientResponse, error_data: Dict[str, Any]) -> str:
         """Format error message for other status codes"""
         error_code = ""
         payload_message = ""
-        
+
         if isinstance(error_data, dict):
-            # Try common error code locations
             error_obj = error_data.get("error")
             if isinstance(error_obj, dict):
                 if isinstance(error_obj.get("message"), str):
@@ -258,8 +253,7 @@ class PyroMindClient:
                     or error_obj.get("error_code")
                     or ""
                 )
-            
-            # Check nested detail structure
+
             detail = error_data.get("detail")
             if not error_code and isinstance(detail, dict):
                 nested_error = detail.get("error")
@@ -271,24 +265,23 @@ class PyroMindClient:
                         or nested_error.get("error_code")
                         or ""
                     )
-        
-        # Build error message
+
         error_message = payload_message or error_data.get("message", "")
         if not error_message:
-            error_message = f"API request failed with status {response.status_code}"
-        
+            error_message = f"API request failed with status {response.status}"
+
         if error_code:
             error_message = f"{error_code}: {error_message}"
-        
+
         if error_data.get("detail"):
             error_message += f"\nDetails: {error_data.get('detail')}"
-        
+
         return error_message
-    
-    def _format_error_message(self, response, error_data: Dict[str, Any]) -> str:
+
+    def _format_error_message(self, response: aiohttp.ClientResponse, error_data: Dict[str, Any]) -> str:
         """Format error message based on status code"""
-        status_code = response.status_code
-        
+        status_code = response.status
+
         if status_code == 400:
             return self._format_400_error(response, error_data)
         elif status_code == 401:
@@ -299,29 +292,28 @@ class PyroMindClient:
             return self._format_422_error(error_data)
         else:
             return self._format_generic_error(response, error_data)
-    
+
     # ========== Error Response Handling ==========
-    
-    def _handle_error_response(self, response, request_context: str) -> None:
+
+    async def _handle_error_response(self, response: aiohttp.ClientResponse, request_context: str) -> None:
         """Handle HTTP error response and raise appropriate exception"""
-        error_data = self._extract_error_data(response)
+        error_data = await self._extract_error_data(response)
         error_data = self._truncate_error_message(error_data)
         error_message = self._format_error_message(response, error_data)
-        
+
         # Log error (single line)
         safe_error_data = self._mask_sensitive_data(error_data)
-        logger.error(f"[ERROR] {request_context} - Status: {response.status_code} | message: {error_message} | response: {safe_error_data}")
-        
-        raise PyroMindAPIError(
+        logger.error(f"[ERROR] {request_context} - Status: {response.status} | message: {error_message} | response: {safe_error_data}")
+
+        raise PyroMindAsyncAPIError(
             message=f"{request_context} failed: {error_message}",
-            status_code=response.status_code,
-            response=error_data,
-            headers=dict(response.headers)
+            status_code=response.status,
+            response=error_data
         )
-    
+
     # ========== Main Request Method ==========
-    
-    def _request(
+
+    async def _request(
         self,
         method: str,
         endpoint: str,
@@ -330,72 +322,84 @@ class PyroMindClient:
         **kwargs
     ) -> Dict[str, Any]:
         """
-        Make an HTTP request to the API
-        
+        Make an async HTTP request to the API
+
         Args:
             method: HTTP method (GET, POST, PUT, DELETE)
             endpoint: API endpoint (relative to base_url)
             params: Query parameters
             json_data: JSON request body
-            **kwargs: Additional arguments to pass to requests
-            
+            **kwargs: Additional arguments to pass to aiohttp
+
         Returns:
             Response JSON data as dictionary
-            
+
         Raises:
-            PyroMindAPIError: If the request fails
+            PyroMindAsyncAPIError: If the request fails
         """
         url = self._build_url(endpoint)
         request_context = self._build_request_context(method, url)
-        
-        # Log request (single line with all info)
-        safe_headers = {k: '***' if k.lower() == 'authorization' else v for k, v in self.session.headers.items()}
-        safe_json = self._mask_sensitive_data(json_data) if json_data else None
-        log_parts = [f"[REQUEST] {request_context}"]
+        session = await self._get_session()
+
+        # Log request
+        logger.info(f"[REQUEST] {request_context}")
         if params:
-            log_parts.append(f"params={params}")
-        log_parts.append(f"headers={safe_headers}")
-        if safe_json:
-            log_parts.append(f"body={safe_json}")
-        logger.info(" | ".join(log_parts))
-        
-        try:
-            response = self.session.request(
-                method=method,
-                url=url,
-                params=params,
-                json=json_data,
-                timeout=self.timeout,
-                **kwargs
-            )
-            
-            # Log response (single line)
-            resp_log = f"[RESPONSE] {request_context} - Status: {response.status_code}"
+            logger.info(f"[REQUEST] params: {params}")
+        if json_data:
+            safe_json = self._mask_sensitive_data(json_data)
+            logger.info(f"[REQUEST] body: {safe_json}")
+        # Log request headers (mask authorization)
+        safe_headers = {k: '***' if k.lower() == 'authorization' else v for k, v in session.headers.items()}
+        logger.info(f"[REQUEST] headers: {safe_headers}")
+
+        last_exception = None
+        for attempt in range(self.max_retries):
             try:
-                if response.content:
-                    resp_json = response.json()
-                    safe_resp = self._mask_sensitive_data(resp_json)
-                    resp_log += f" | body={safe_resp}"
-            except Exception:
-                pass
-            logger.info(resp_log)
-            
-            # Handle non-2xx responses
-            if not response.ok:
-                self._handle_error_response(response, request_context)
+                async with session.request(
+                    method=method,
+                    url=url,
+                    params=params,
+                    json=json_data,
+                    **kwargs
+                ) as response:
+                    # Log response
+                    logger.info(f"[RESPONSE] {request_context} - Status: {response.status}")
+                    try:
+                        if response.content:
+                            resp_json = await response.json()
+                            safe_resp = self._mask_sensitive_data(resp_json)
+                            logger.info(f"[RESPONSE] body: {safe_resp}")
+                    except Exception:
+                        logger.info(f"[RESPONSE] body: <non-JSON content>")
 
-            # Return JSON response
-            if response.content:
-                return response.json()
-            return {}
+                    # Handle non-2xx responses
+                    if not response.ok:
+                        await self._handle_error_response(response, request_context)
 
-        except requests.exceptions.RequestException as e:
-            # Log exception
-            logger.error(f"[ERROR] {request_context} - {type(e).__name__}: {str(e)}")
-            raise PyroMindAPIError(
-                message=f"{request_context} request failed: {type(e).__name__}: {str(e)}",
-                status_code=None
-            )
+                    # Return JSON response
+                    if response.content:
+                        return await response.json()
+                    return {}
+
+            except aiohttp.ClientError as e:
+                last_exception = e
+                # Log exception
+                logger.error(f"[ERROR] {request_context} - {type(e).__name__}: {str(e)} (attempt {attempt + 1}/{self.max_retries})")
+                if attempt < self.max_retries - 1:
+                    import asyncio
+                    await asyncio.sleep(1 ** attempt)  # Exponential backoff
+                    continue
+                raise PyroMindAsyncAPIError(
+                    message=f"{request_context} request failed: {type(e).__name__}: {str(e)}",
+                    status_code=None
+                )
+
+        # If we get here, all retries failed
+        logger.error(f"[ERROR] {request_context} - All {self.max_retries} retries failed")
+        raise PyroMindAsyncAPIError(
+            message=f"{request_context} request failed after {self.max_retries} retries: {str(last_exception)}",
+            status_code=None
+        )
     
     def _mask_sensitive_data(self, data: Any, mask: str = "***") -> Any:
         """
@@ -424,32 +428,32 @@ class PyroMindClient:
             return [self._mask_sensitive_data(item, mask) for item in data]
         return data
 
+    async def get(self, endpoint: str, params: Optional[Dict[str, Any]] = None, **kwargs) -> Dict[str, Any]:
+        """Make an async GET request"""
+        return await self._request("GET", endpoint, params=params, **kwargs)
 
+    async def post(self, endpoint: str, json_data: Optional[Dict[str, Any]] = None, **kwargs) -> Dict[str, Any]:
+        """Make an async POST request"""
+        return await self._request("POST", endpoint, json_data=json_data, **kwargs)
 
-    def get(self, endpoint: str, params: Optional[Dict[str, Any]] = None, **kwargs) -> Dict[str, Any]:
-        """Make a GET request"""
-        return self._request("GET", endpoint, params=params, **kwargs)
-    
-    def post(self, endpoint: str, json_data: Optional[Dict[str, Any]] = None, **kwargs) -> Dict[str, Any]:
-        """Make a POST request"""
-        return self._request("POST", endpoint, json_data=json_data, **kwargs)
-    
-    def put(self, endpoint: str, json_data: Optional[Dict[str, Any]] = None, **kwargs) -> Dict[str, Any]:
-        """Make a PUT request"""
-        return self._request("PUT", endpoint, json_data=json_data, **kwargs)
-    
-    def delete(self, endpoint: str, **kwargs) -> Dict[str, Any]:
-        """Make a DELETE request"""
-        return self._request("DELETE", endpoint, **kwargs)
-    
-    def close(self):
+    async def put(self, endpoint: str, json_data: Optional[Dict[str, Any]] = None, **kwargs) -> Dict[str, Any]:
+        """Make an async PUT request"""
+        return await self._request("PUT", endpoint, json_data=json_data, **kwargs)
+
+    async def delete(self, endpoint: str, **kwargs) -> Dict[str, Any]:
+        """Make an async DELETE request"""
+        return await self._request("DELETE", endpoint, **kwargs)
+
+    async def close(self):
         """Close the session"""
-        self.session.close()
-    
-    def __enter__(self):
-        """Context manager entry"""
+        if self._session and not self._session.closed:
+            await self._session.close()
+            self._session = None
+
+    async def __aenter__(self):
+        """Async context manager entry"""
         return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit"""
-        self.close()
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit"""
+        await self.close()

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Sandbox Management Example
+Async Sandbox Management Example
 
-This example demonstrates how to create, manage, and interact with sandboxes.
+This example demonstrates how to create, manage, and interact with sandboxes asynchronously.
 
 The API key can be provided via:
 1. PYROMIND_API_KEY environment variable (recommended)
@@ -11,7 +11,10 @@ The API key can be provided via:
 If neither is provided, the client will raise a ValueError.
 """
 
-from pyromind_sdk import PyroMindAPIClient, PyroMindAPIError
+import asyncio
+import time
+
+from pyromind_sdk import PyroMindAsyncAPIClient, PyroMindAPIError
 from pyromind_sdk.client.models import (
     SandboxRequest,
     SandboxConfiguration,
@@ -21,17 +24,16 @@ from pyromind_sdk.client.models import (
     ActionRequest,
     ActionParameters,
 )
-import time
 
 
-def create_sandbox_example():
-    """Example: Create a new sandbox"""
+async def create_sandbox_example():
+    """Example: Create a new sandbox (async)"""
     # API key is read from PYROMIND_API_KEY environment variable
-    client = PyroMindAPIClient()
+    client = PyroMindAsyncAPIClient()
     
     try:
         print("Creating a new sandbox...")
-        sandbox = client.sandboxes.create(
+        sandbox = await client.sandboxes.create(
             SandboxRequest(
                 name=f"example-sandbox-{int(time.time())}",
                 sandbox_type=SandboxType.WINDOWS,
@@ -61,17 +63,17 @@ def create_sandbox_example():
         print(f"✗ Failed to create sandbox: {e}")
         return None
     finally:
-        client.close()
+        await client.close()
 
 
-def update_sandbox_example(sandbox_id: str):
-    """Example: Update a sandbox"""
+async def update_sandbox_example(sandbox_id: str):
+    """Example: Update a sandbox (async)"""
     # API key is read from PYROMIND_API_KEY environment variable
-    client = PyroMindAPIClient()
+    client = PyroMindAsyncAPIClient()
     
     try:
         print(f"Updating sandbox {sandbox_id}...")
-        updated_sandbox = client.sandboxes.update(
+        updated_sandbox = await client.sandboxes.update(
             sandbox_id=sandbox_id,
             request=SandboxRequest(
                 name=f"updated-sandbox-{int(time.time())}",
@@ -98,17 +100,17 @@ def update_sandbox_example(sandbox_id: str):
         print(f"✗ Failed to update sandbox: {e.message}")
         return None
     finally:
-        client.close()
+        await client.close()
 
 
-def pause_sandbox_example(sandbox_id: str):
-    """Example: Pause a sandbox"""
+async def pause_sandbox_example(sandbox_id: str):
+    """Example: Pause a sandbox (async)"""
     # API key is read from PYROMIND_API_KEY environment variable
-    client = PyroMindAPIClient()
+    client = PyroMindAsyncAPIClient()
     
     try:
         print(f"Pausing sandbox {sandbox_id}...")
-        sandbox = client.sandboxes.pause(sandbox_id)
+        sandbox = await client.sandboxes.pause(sandbox_id)
         print(f"✓ Sandbox paused successfully!")
         print(f"  Name: {sandbox.name}")
         print(f"  Status: {sandbox.status}")
@@ -118,17 +120,17 @@ def pause_sandbox_example(sandbox_id: str):
         print(f"✗ Failed to pause sandbox: {e.message}")
         return None
     finally:
-        client.close()
+        await client.close()
 
 
-def resume_sandbox_example(sandbox_id: str):
-    """Example: Resume a sandbox"""
+async def resume_sandbox_example(sandbox_id: str):
+    """Example: Resume a sandbox (async)"""
     # API key is read from PYROMIND_API_KEY environment variable
-    client = PyroMindAPIClient()
+    client = PyroMindAsyncAPIClient()
     
     try:
         print(f"Resuming sandbox {sandbox_id}...")
-        sandbox = client.sandboxes.resume(sandbox_id)
+        sandbox = await client.sandboxes.resume(sandbox_id)
         print(f"✓ Sandbox resumed successfully!")
         print(f"  Name: {sandbox.name}")
         print(f"  Status: {sandbox.status}")
@@ -138,17 +140,17 @@ def resume_sandbox_example(sandbox_id: str):
         print(f"✗ Failed to resume sandbox: {e.message}")
         return None
     finally:
-        client.close()
+        await client.close()
 
 
-def list_sandboxes_example():
-    """Example: List all sandboxes"""
+async def list_sandboxes_example():
+    """Example: List all sandboxes (async)"""
     # API key is read from PYROMIND_API_KEY environment variable
-    client = PyroMindAPIClient()
+    client = PyroMindAsyncAPIClient()
     
     try:
         print("Listing all sandboxes...")
-        sandboxes = client.sandboxes.list()
+        sandboxes = await client.sandboxes.list()
         print(f"Found {len(sandboxes)} sandbox(es):")
         
         for sandbox in sandboxes:
@@ -166,17 +168,17 @@ def list_sandboxes_example():
         print(f"✗ Failed to list sandboxes: {e.message}")
         return []
     finally:
-        client.close()
+        await client.close()
 
 
-def get_sandbox_example(sandbox_id: str):
-    """Example: Get a specific sandbox"""
+async def get_sandbox_example(sandbox_id: str):
+    """Example: Get a specific sandbox (async)"""
     # API key is read from PYROMIND_API_KEY environment variable
-    client = PyroMindAPIClient()
+    client = PyroMindAsyncAPIClient()
 
     try:
         print(f"Getting sandbox {sandbox_id}...")
-        sandbox = client.sandboxes.get_sandbox(sandbox_id)
+        sandbox = await client.sandboxes.get_sandbox(sandbox_id)
         print(f"✓ Sandbox details:")
         print(f"  Name: {sandbox.name}")
         print(f"  Type: {sandbox.type}")
@@ -192,17 +194,17 @@ def get_sandbox_example(sandbox_id: str):
         print(f"✗ Failed to get sandbox: {e.message}")
         return None
     finally:
-        client.close()
+        await client.close()
 
 
-def execute_action_example(sandbox_id: str):
-    """Example: Execute an action in a sandbox"""
+async def execute_action_example(sandbox_id: str):
+    """Example: Execute an action in a sandbox (async)"""
     # API key is read from PYROMIND_API_KEY environment variable
-    client = PyroMindAPIClient()
+    client = PyroMindAsyncAPIClient()
     
     try:
         print(f"Executing action in sandbox {sandbox_id}...")
-        action = client.sandboxes.execute_action(
+        action = await client.sandboxes.execute_action(
             sandbox_id=sandbox_id,
             request=ActionRequest(
                 action="run_command",
@@ -223,17 +225,17 @@ def execute_action_example(sandbox_id: str):
         print(f"✗ Failed to execute action: {e.message}")
         return None
     finally:
-        client.close()
+        await client.close()
 
 
-def get_vnc_example(sandbox_id: str):
-    """Example: Get VNC connection information"""
+async def get_vnc_example(sandbox_id: str):
+    """Example: Get VNC connection information (async)"""
     # API key is read from PYROMIND_API_KEY environment variable
-    client = PyroMindAPIClient()
+    client = PyroMindAsyncAPIClient()
     
     try:
         print(f"Getting VNC connection info for sandbox {sandbox_id}...")
-        vnc_info = client.sandboxes.get_vnc(sandbox_id)
+        vnc_info = await client.sandboxes.get_vnc(sandbox_id)
         print(f"✓ VNC Connection Info:")
         print(f"  Host: {vnc_info.get('host')}")
         print(f"  Port: {vnc_info.get('port')}")
@@ -245,33 +247,33 @@ def get_vnc_example(sandbox_id: str):
         print(f"✗ Failed to get VNC info: {e.message}")
         return None
     finally:
-        client.close()
+        await client.close()
 
 
-def delete_sandbox_example(sandbox_id: str):
-    """Example: Delete a sandbox"""
+async def delete_sandbox_example(sandbox_id: str):
+    """Example: Delete a sandbox (async)"""
     # API key is read from PYROMIND_API_KEY environment variable
-    client = PyroMindAPIClient()
+    client = PyroMindAsyncAPIClient()
     
     try:
         print(f"Deleting sandbox {sandbox_id}...")
-        client.sandboxes.delete(sandbox_id)
+        await client.sandboxes.delete(sandbox_id)
         print(f"✓ Sandbox deleted successfully!")
         
     except PyroMindAPIError as e:
         print(f"✗ Failed to delete sandbox: {e.message}")
     finally:
-        client.close()
+        await client.close()
 
 
-def main():
-    """Main example function"""
+async def main():
+    """Main example function (async)"""
     print("=" * 60)
-    print("Sandbox Management Examples")
+    print("Sandbox Management Examples (Async)")
     print("=" * 60)
     
     # List existing sandboxes
-    sandboxes = list_sandboxes_example()
+    sandboxes = await list_sandboxes_example()
     
     # If we have sandboxes, demonstrate operations
     if sandboxes:
@@ -279,32 +281,31 @@ def main():
         print(f"\nUsing sandbox: {sandbox_id}")
         
         # Get sandbox details
-        get_sandbox_example(sandbox_id)
+        await get_sandbox_example(sandbox_id)
         
         # Update sandbox
-        update_sandbox_example(sandbox_id)
+        await update_sandbox_example(sandbox_id)
         
         # Execute an action
-        execute_action_example(sandbox_id)
+        await execute_action_example(sandbox_id)
         
         # Get VNC info (if available)
-        get_vnc_example(sandbox_id)
+        await get_vnc_example(sandbox_id)
     else:
         print("\nNo existing sandboxes found. Creating a new one...")
-        sandbox_id = create_sandbox_example()
+        sandbox_id = await create_sandbox_example()
         
         if sandbox_id:
             # Wait a bit for sandbox to be ready
-            import time
             print("\nWaiting for sandbox to be ready...")
-            time.sleep(2)
+            await asyncio.sleep(2)
             
             # Update sandbox
-            update_sandbox_example(sandbox_id)
+            await update_sandbox_example(sandbox_id)
             
             # Execute an action
-            execute_action_example(sandbox_id)
+            await execute_action_example(sandbox_id)
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
