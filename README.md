@@ -14,12 +14,7 @@ pip install pyromind-sdk
 
 ### YAML-based Node Configuration
 
-Define nodes using YAML files with the unified `parameters` format. All inputs and outputs are defined in the `parameters` list:
-
-- **Input parameters**: Use `type: "input"` with `required_type: "required"` or `"optional"`
-- **Output parameters**: Use `type: "output"` (outputs are automatically extracted to create `RETURN_TYPES` and `RETURN_NAMES`)
-- **dtype**: Any string is valid as a dtype — there is no whitelist restriction. Use a single string (e.g. `"STRING"`) or a list for union types (e.g. `[STRING, PATH]` or pipe-separated `STRING|PATH`)
-- **Constraints**: Use the `limit` block or flat keys (`min`, `max`, `step`, `enum`) to restrict input values; constraints are validated against the dtype (e.g. `min`/`max` only for INT/FLOAT)
+Define nodes using YAML files with the `parameters` format:
 
 ```python
 from pyromind_sdk import load_nodes_from_yaml
@@ -33,9 +28,38 @@ print(MyNode.DESCRIPTION)
 print(MyNode.BASE_INPUT_TYPES())
 ```
 
-#### Example YAML Node Configuration
+#### Parameter Format
 
-Create `my_node.yaml`:
+```yaml
+parameters:
+  - name: input0
+    type: input
+    required_type: required
+    dtype: INT
+    default: 1
+    min: 1
+    max: 8
+  - name: input1
+    type: input
+    required_type: optional
+    dtype: [STRING, PATH]          # list for union type
+  - name: input2
+    type: input
+    required_type: required
+    dtype: STRING
+    limit:
+      enum: ["train", "eval"]     # dropdown choices
+    default: "train"
+  - name: output
+    type: output
+    dtype: STRING
+```
+
+Available `dtype` values: `STRING`, `INT`, `FLOAT`, `BOOLEAN`, `PATH`, `MODEL`, `ENV`, `ACCELERATE_CONFIG`, `*` (any), `ANY`.
+
+Union types use a list: `[STRING, PATH]`. Constraints (`min`, `max`, `step`, `enum`) go in the `limit` block and are validated against dtype compatibility.
+
+#### Example YAML Node Configuration
 
 ```yaml
 name: MyNode
@@ -49,33 +73,31 @@ command_template:
 
 parameters:
   - name: name
-    dtype: "STRING"
+    dtype: STRING
     default: "World"
-    type: "input"
-    required_type: "required"
+    type: input
+    required_type: required
   - name: score
     dtype: FLOAT
     type: input
     required_type: required
     default: 0.5
-    limit:
-      min: 0.0
-      max: 1.0
+    min: 0.0
+    max: 1.0
   - name: path_or_model
-    dtype: [STRING, PATH]    # union type — accepts STRING and other non-basic types
+    dtype: [STRING, PATH]          # union — accepts STRING and non-basic types
     type: input
     required_type: optional
   - name: mode
     dtype: STRING
     type: input
     required_type: required
-    enum:
-      - "train"
-      - "eval"
-      - "predict"
+    limit:
+      enum: ["train", "eval", "predict"]
+    default: "train"
   - name: output
-    dtype: "STRING"
-    type: "output"
+    dtype: STRING
+    type: output
 ```
 
 ## Main Classes
