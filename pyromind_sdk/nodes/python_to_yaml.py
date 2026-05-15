@@ -765,10 +765,10 @@ class ParameterValidation:
 
 
 RESOURCE_TYPE_TO_BASE_CLASS = {
-    "cpu": "PodExecutionNode",
-    "gpu": ["GpuPodExecutionNode", "PodExecutionNode"],
-    # "tpu": "PodExecutionNode",
-    # "npu": "PodExecutionNode",
+    "cpu": "JupyterLabPodExecutionNode",
+    "gpu": ["JupyterLabPodExecutionNode", "GpuPodExecutionNode"],
+    # "tpu": "JupyterLabPodExecutionNode",
+    # "npu": "JupyterLabPodExecutionNode",
     # "jupyter": "JupyterLabPodExecutionNode",
     # "jupyterlab": "JupyterLabPodExecutionNode",
     # "port": "PortPodExecutionNode",

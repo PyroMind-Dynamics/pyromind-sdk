@@ -130,7 +130,7 @@ You can also create nodes that execute Python functions directly:
 ```yaml
 name: CalculatorNode
 description: "A calculator node using Python function"
-base_class: PodExecutionNode
+base_class: JupyterLabPodExecutionNode
 
 # Python function configuration
 python_code: "utils/calculator.py"      # Python file path (relative to YAML file or absolute path)
@@ -267,7 +267,7 @@ base_class:
 
 **When to use each base class:**
 
-- **`PodExecutionNode`**: Basic Pod execution node (default). Use this for standard command execution without special requirements.
+- **`PodExecutionNode`**: Basic Pod execution node. Use this for standard command execution without special requirements.
 
 - **`GpuPodExecutionNode`**: **Required** if your node needs GPU resources. This base class provides GPU configuration options (`gpu_count`, `gpu_product`) and ensures GPU resources are allocated. If you specify GPU resources in the `resources` section or need GPU access, you must inherit from this class.
 
